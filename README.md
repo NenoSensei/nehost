@@ -9,26 +9,35 @@ npm install
 npm run dev
 ```
 
-The production build uses `/nehost/` as its base path so it can be served from `https://nenosensei.com/nehost/` or GitHub Pages at `/nehost/`.
+The production build uses relative asset paths so it works at the GitHub Pages project URL and the custom domain.
 
 ## GitHub Pages
 
 Pushing to `main` deploys the built site through GitHub Pages. The expected public URL is:
 
 ```text
-https://nenosensei.github.io/nehost/
+https://nehost.nenosensei.com/
 ```
 
-## Contact Email
+## Contact Form
 
-The contact form opens a prefilled email. Set the production inbox with:
+The contact form submits in-page through a configurable email form endpoint. By default, it posts to FormSubmit's AJAX endpoint for `nehost@nenosensei.com` and sends structured project details.
+
+Set the production inbox with:
 
 ```powershell
 $env:VITE_CONTACT_EMAIL="you@example.com"
 npm run build
 ```
 
-If no value is provided, it defaults to `hello@nehost.com`.
+Set a different provider endpoint with:
+
+```powershell
+$env:VITE_CONTACT_FORM_ENDPOINT="https://example.com/contact-endpoint"
+npm run build
+```
+
+If no value is provided, the public email defaults to `nehost@nenosensei.com`.
 
 ## Build
 

@@ -823,12 +823,27 @@ main {
   justify-self: start;
 }
 
+.form-button:disabled {
+  cursor: progress;
+  opacity: 0.72;
+}
+
 .form-status {
   align-self: center;
   margin: 0;
   color: var(--muted);
   font-size: 0.9rem;
   line-height: 1.45;
+}
+
+.form-status.is-success {
+  color: #0f7b4d;
+  font-weight: 800;
+}
+
+.form-status.is-error {
+  color: #b42318;
+  font-weight: 800;
 }
 
 .site-footer {

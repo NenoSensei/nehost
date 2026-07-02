@@ -18,7 +18,10 @@ import {
 import heroImage from "./assets/nehost-hero.png";
 import showcaseImage from "./assets/nehost-showcase.png";
 
-const CONTACT_EMAIL = import.meta.env.VITE_CONTACT_EMAIL || "hello@nehost.com";
+const CONTACT_EMAIL = import.meta.env.VITE_CONTACT_EMAIL || "nehost@nenosensei.com";
+const CONTACT_FORM_ENDPOINT =
+  import.meta.env.VITE_CONTACT_FORM_ENDPOINT ||
+  `https://formsubmit.co/ajax/${encodeURIComponent(CONTACT_EMAIL)}`;
 
 const services = [
   {
@@ -105,7 +108,11 @@ function App() {
     type: "Basic business site",
     message: "",
   });
-  const [formStatus, setFormStatus] = useState("");
+  const [formStatus, setFormStatus] = useState({
+    tone: "idle",
+    message: "Send your project details directly to NeHost without leaving the site.",
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -158,16 +165,71 @@ function App() {
     setForm((current) => ({ ...current, [name]: value }));
   };
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
 
-    if (!form.name.trim() || !form.email.trim() || !form.message.trim()) {
-      setFormStatus("Please add your name, email, and project notes before sending.");
+    const name = form.name.trim();
+    const email = form.email.trim();
+    const message = form.message.trim();
+
+    if (!name || !email || !message) {
+      setFormStatus({
+        tone: "error",
+        message: "Please add your name, email, and project notes before sending.",
+      });
       return;
     }
 
-    setFormStatus("Opening your email app with a ready-to-send consultation request.");
-    window.location.href = mailtoHref;
+    if (!email.includes("@") || !email.includes(".")) {
+      setFormStatus({
+        tone: "error",
+        message: "Please enter a valid email address so we can reply to you.",
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+    setFormStatus({ tone: "idle", message: "Sending your consultation request..." });
+
+    try {
+      const response = await fetch(CONTACT_FORM_ENDPOINT, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name,
+          email,
+          "project type": form.type,
+          message,
+          source: "nehost.nenosensei.com contact form",
+          _captcha: "false",
+          _honey: "",
+          _replyto: email,
+          _subject: `NeHost consultation request - ${form.type}`,
+          _template: "table",
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Contact service did not accept the message.");
+      }
+
+      setForm({ name: "", email: "", type: "Basic business site", message: "" });
+      setFormStatus({
+        tone: "success",
+        message: "Message sent. NeHost will follow up with you soon.",
+      });
+    } catch {
+      setFormStatus({
+        tone: "error",
+        message:
+          "The in-site message could not be sent. Please use the email link beside the form.",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const scrollToContact = () => {
@@ -210,7 +272,7 @@ function App() {
                 Schedule a demo consult
                 <ArrowRight size={19} aria-hidden="true" />
               </button>
-              <a className="button button-secondary" href={`mailto:${CONTACT_EMAIL}`}>
+              <a className="button button-secondary" href={mailtoHref}>
                 <Mail size={19} aria-hidden="true" />
                 Email NeHost
                 <ArrowRight size={19} aria-hidden="true" />
@@ -355,7 +417,7 @@ function App() {
               Send a message and we will start with your goals, then schedule a consultation to
               walk through a demo site direction.
             </p>
-            <a className="email-link" href={`mailto:${CONTACT_EMAIL}`}>
+            <a className="email-link" href={mailtoHref}>
               <Mail size={20} aria-hidden="true" />
               {CONTACT_EMAIL}
             </a>
@@ -402,12 +464,12 @@ function App() {
                 value={form.message}
               />
             </label>
-            <button className="button button-primary form-button" type="submit">
-              Email NeHost
+            <button className="button button-primary form-button" type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Sending..." : "Send message"}
               <Send size={18} aria-hidden="true" />
             </button>
-            <p className="form-status" role="status">
-              {formStatus || "The form opens your email app with your project details filled in."}
+            <p className={`form-status is-${formStatus.tone}`} role="status">
+              {formStatus.message}
             </p>
           </form>
         </div>
