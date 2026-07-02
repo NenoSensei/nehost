@@ -11,6 +11,14 @@ npm run dev
 
 The production build uses `/nehost/` as its base path so it can be served from `https://nenosensei.com/nehost/` or GitHub Pages at `/nehost/`.
 
+## GitHub Pages
+
+Pushing to `main` deploys the built site through GitHub Pages. The expected public URL is:
+
+```text
+https://nenosensei.github.io/nehost/
+```
+
 ## Contact Email
 
 The contact form opens a prefilled email. Set the production inbox with:
