@@ -239,9 +239,7 @@ function App() {
   return (
     <main>
       <header className="site-header" aria-label="Primary navigation">
-        <a className="brand" href="#top" aria-label="NeHost home">
-          <span>Ne</span>Host
-        </a>
+        <BrandLogo />
         <nav>
           <a href="#services">Services</a>
           <a href="#work">Our Work</a>
@@ -478,9 +476,7 @@ function App() {
       <footer className="site-footer">
         <div className="section-inner footer-layout">
           <div>
-            <a className="brand footer-brand" href="#top">
-              <span>Ne</span>Host
-            </a>
+            <BrandLogo className="footer-brand" />
             <p>Website creation, hosting, and care for businesses ready to look sharp online.</p>
           </div>
           <div className="footer-links">
@@ -504,6 +500,20 @@ function ProofPoint({ icon: Icon, title, body }) {
         <p>{body}</p>
       </div>
     </article>
+  );
+}
+
+function BrandLogo({ className = "" }) {
+  return (
+    <a className={`brand ${className}`.trim()} href="#top" aria-label="NeHost home">
+      <span className="brand-mark" aria-hidden="true">
+        <span>N</span>
+        <span>H</span>
+      </span>
+      <span className="brand-word">
+        <span className="brand-ne">Ne</span>Host
+      </span>
+    </a>
   );
 }
 

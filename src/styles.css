@@ -99,16 +99,53 @@ main {
 
 .brand {
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
   flex: 0 0 auto;
+  gap: 10px;
+  color: var(--ink);
   font-size: 2rem;
   font-weight: 900;
   line-height: 1;
   letter-spacing: 0;
 }
 
-.brand span {
+.brand-mark {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  overflow: hidden;
+  border: 1px solid rgba(43, 242, 49, 0.2);
+  border-radius: 9px;
+  background: var(--dark);
+  box-shadow: 0 10px 22px rgba(6, 16, 24, 0.16);
+  color: white;
+  font-size: 0.78rem;
+  font-weight: 950;
+  letter-spacing: 0;
+}
+
+.brand-mark::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background: linear-gradient(135deg, rgba(43, 242, 49, 0.28), transparent 58%);
+}
+
+.brand-mark span {
+  position: relative;
+}
+
+.brand-mark span:first-child,
+.brand-ne {
   color: var(--green);
+}
+
+.brand-word {
+  display: inline-flex;
 }
 
 .site-header nav {
@@ -862,6 +899,11 @@ main {
   color: white;
 }
 
+.footer-brand .brand-mark {
+  border-color: rgba(43, 242, 49, 0.32);
+  box-shadow: none;
+}
+
 .site-footer p {
   max-width: 360px;
   color: rgba(255, 255, 255, 0.7);
@@ -980,6 +1022,14 @@ main {
 
   .brand {
     font-size: 1.55rem;
+    gap: 8px;
+  }
+
+  .brand-mark {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    font-size: 0.7rem;
   }
 
   .header-cta {
