@@ -19,7 +19,6 @@ docker run -d \
   --name "${APP_NAME}" \
   --restart unless-stopped \
   --security-opt no-new-privileges:true \
-  --cap-drop ALL \
   --network "${EDGE_NETWORK}" \
   -p "127.0.0.1:${HOST_PORT}:${CONTAINER_PORT}" \
   "${IMAGE_NAME}" >/dev/null
