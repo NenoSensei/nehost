@@ -454,8 +454,7 @@ main {
 .process-card p,
 .section-heading p,
 .work-copy p,
-.contact-copy p,
-.site-footer p {
+.contact-copy p {
   margin: 8px 0 0;
   color: var(--muted);
   line-height: 1.5;
@@ -556,7 +555,7 @@ main {
 }
 
 .concept-tabs button::after {
-  content: "View";
+  content: "Preview";
   color: var(--cyan);
   font-size: 0.82rem;
 }
@@ -585,8 +584,8 @@ main {
   position: absolute;
   right: 24px;
   bottom: -38px;
-  width: min(360px, 55%);
-  padding: 12px;
+  width: min(470px, 66%);
+  padding: 14px;
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: var(--radius);
   background: rgba(2, 7, 11, 0.9);
@@ -605,7 +604,8 @@ main {
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: var(--radius);
-  background: white;
+  background: #f7fbfd;
+  color: var(--ink);
 }
 
 .mock-chrome {
@@ -630,62 +630,140 @@ main {
   background: var(--green);
 }
 
-.mock-hero {
-  min-height: 132px;
-  padding: 18px;
-  color: white;
-  background-size: cover;
-  background-position: center;
+.mock-site-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #deebf2;
+  background: white;
 }
 
-.mock-hero h3 {
-  max-width: 210px;
-  margin: 0;
-  font-size: 1.35rem;
-  line-height: 1;
+.mock-site-nav strong {
+  font-size: 0.88rem;
+  line-height: 1.1;
 }
 
-.mock-hero button {
-  min-height: 34px;
-  margin-top: 16px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: 6px;
-  background: var(--cyan);
-  color: var(--ink);
-  cursor: pointer;
-  font-size: 0.78rem;
+.mock-site-nav div {
+  display: flex;
+  gap: 8px;
+  color: #5d6d78;
+  font-size: 0.62rem;
   font-weight: 850;
 }
 
-.mock-coral .mock-hero button {
-  background: var(--coral);
+.mock-site-hero {
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: 14px;
+  min-height: 176px;
+  padding: 16px;
   color: white;
 }
 
-.mock-green .mock-hero button {
-  background: var(--green);
-}
-
-.mock-chef-special {
+.mock-coral .mock-site-hero {
   background:
-    linear-gradient(90deg, rgba(0, 0, 0, 0.88), rgba(0, 0, 0, 0.24)),
-    linear-gradient(135deg, #30130f, #c95b42 42%, #111 43%);
+    linear-gradient(115deg, rgba(18, 6, 5, 0.94), rgba(18, 6, 5, 0.52)),
+    radial-gradient(circle at 82% 18%, #ff9b74, transparent 34%),
+    linear-gradient(135deg, #3a1712, #c95b42 58%, #121212);
 }
 
-.mock-contractor {
+.mock-green .mock-site-hero {
   background:
-    linear-gradient(90deg, rgba(3, 13, 20, 0.86), rgba(3, 13, 20, 0.2)),
-    linear-gradient(135deg, #12324a, #70d53a 48%, #101a12 49%);
+    linear-gradient(115deg, rgba(4, 18, 17, 0.94), rgba(4, 18, 17, 0.5)),
+    radial-gradient(circle at 80% 22%, #78e05f, transparent 35%),
+    linear-gradient(135deg, #12324a, #1f7a57 60%, #101a12);
 }
 
-.mock-portfolio {
+.mock-cyan .mock-site-hero {
   background:
-    linear-gradient(90deg, rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0.2)),
-    linear-gradient(135deg, #021219, #0fc6e8 42%, #111 43%);
+    linear-gradient(115deg, rgba(2, 14, 20, 0.94), rgba(2, 14, 20, 0.48)),
+    radial-gradient(circle at 80% 18%, #0fc6e8, transparent 34%),
+    linear-gradient(135deg, #07121d, #1753d2 58%, #111);
 }
 
-.mock-grid {
+.mock-site-copy {
+  align-self: center;
+}
+
+.mock-site-copy span {
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mock-site-copy h3 {
+  max-width: 250px;
+  margin: 8px 0;
+  color: white;
+  font-size: 1.38rem;
+  line-height: 1.02;
+}
+
+.mock-site-copy p {
+  max-width: 255px;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.68rem;
+  line-height: 1.45;
+}
+
+.mock-site-visual {
+  display: grid;
+  align-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.mock-image-stack {
+  display: grid;
+  grid-template-columns: 1fr 0.72fr;
+  grid-template-rows: repeat(2, 1fr);
+  gap: 7px;
+  min-height: 88px;
+}
+
+.mock-image-stack span {
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.mock-image-stack span:first-child {
+  grid-row: 1 / -1;
+}
+
+.mock-coral .mock-image-stack span:first-child {
+  background:
+    radial-gradient(circle at 50% 35%, #ffd2b8 0 16%, transparent 17%),
+    linear-gradient(145deg, #7a261b, #f0885c);
+}
+
+.mock-green .mock-image-stack span:first-child {
+  background:
+    linear-gradient(155deg, transparent 0 34%, rgba(255, 255, 255, 0.26) 35% 48%, transparent 49%),
+    linear-gradient(145deg, #244c61, #69d94d);
+}
+
+.mock-cyan .mock-image-stack span:first-child {
+  background:
+    radial-gradient(circle at 34% 32%, #ffffff 0 8%, transparent 9%),
+    linear-gradient(145deg, #072238, #0fc6e8);
+}
+
+.mock-site-visual strong {
+  color: white;
+  font-size: 0.74rem;
+  line-height: 1.1;
+}
+
+.mock-site-cards {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
@@ -693,18 +771,55 @@ main {
   background: white;
 }
 
-.mock-grid span {
-  min-height: 48px;
-  border-radius: 6px;
+.mock-site-cards article {
+  display: grid;
+  align-content: space-between;
+  gap: 10px;
+  min-height: 68px;
+  padding: 9px;
+  border: 1px solid #e1edf3;
+  border-radius: 8px;
   background: #eaf2f6;
 }
 
-.mock-grid span:nth-child(2) {
-  background: #d7edf6;
+.mock-site-cards article span {
+  width: 34px;
+  height: 7px;
+  border-radius: 99px;
+  background: var(--cyan);
 }
 
-.mock-grid span:nth-child(3) {
-  background: #edf7e8;
+.mock-coral .mock-site-cards article span {
+  background: var(--coral);
+}
+
+.mock-green .mock-site-cards article span {
+  background: var(--green);
+}
+
+.mock-site-cards article strong {
+  color: #172632;
+  font-size: 0.68rem;
+  line-height: 1.15;
+}
+
+.mock-site-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding: 10px;
+  border-top: 1px solid #deebf2;
+  background: #f8fbfd;
+}
+
+.mock-site-stats span {
+  min-height: 24px;
+  padding: 6px 9px;
+  border-radius: 99px;
+  background: white;
+  color: #455662;
+  font-size: 0.64rem;
+  font-weight: 850;
 }
 
 .process-section {
@@ -902,11 +1017,6 @@ main {
 .footer-brand .brand-mark {
   border-color: rgba(43, 242, 49, 0.32);
   box-shadow: none;
-}
-
-.site-footer p {
-  max-width: 360px;
-  color: rgba(255, 255, 255, 0.7);
 }
 
 .footer-links {
