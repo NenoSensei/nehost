@@ -511,7 +511,10 @@ main {
 }
 
 .work-layout {
-  max-width: 680px;
+  display: grid;
+  grid-template-columns: 0.72fr 1.28fr;
+  gap: 46px;
+  align-items: center;
 }
 
 .work-copy h2 {
@@ -522,6 +525,18 @@ main {
 .work-copy p {
   color: rgba(255, 255, 255, 0.72);
   font-size: 1.06rem;
+}
+
+.work-art {
+  position: relative;
+}
+
+.work-showcase-image {
+  display: block;
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.36);
 }
 
 .process-section {

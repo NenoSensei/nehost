@@ -16,6 +16,7 @@ import {
   Zap,
 } from "lucide-react";
 import heroImage from "./assets/nehost-hero.png";
+import showcaseImage from "./assets/nehost-showcase.png";
 
 const CONTACT_EMAIL = import.meta.env.VITE_CONTACT_EMAIL || "nehost@nenosensei.com";
 const CONTACT_FORM_ENDPOINT =
@@ -317,6 +318,13 @@ function App() {
               Your demo consult is where we translate your business into a page people can trust,
               understand, and act on.
             </p>
+          </div>
+          <div className="work-art" data-reveal>
+            <img
+              className="work-showcase-image"
+              src={showcaseImage}
+              alt="Polished website concepts shown across desktop and mobile layouts."
+            />
           </div>
         </div>
       </section>
