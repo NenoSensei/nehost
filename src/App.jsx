@@ -16,7 +16,6 @@ import {
   Zap,
 } from "lucide-react";
 import heroImage from "./assets/nehost-hero.png";
-import showcaseImage from "./assets/nehost-showcase.png";
 
 const CONTACT_EMAIL = import.meta.env.VITE_CONTACT_EMAIL || "nehost@nenosensei.com";
 const CONTACT_FORM_ENDPOINT =
@@ -43,51 +42,6 @@ const services = [
     title: "Built to Grow",
     body: "Add booking, forms, galleries, payments, automations, and richer pages later.",
     icon: Rocket,
-  },
-];
-
-const concepts = [
-  {
-    id: "restaurant",
-    title: "Restaurant Launch",
-    color: "coral",
-    line: "Menus, ordering, reservations, and a polished local search presence.",
-    brand: "Modern Hearth",
-    nav: ["Menu", "Events", "Reserve"],
-    kicker: "Seasonal dining",
-    headline: "A warm table, booked in seconds.",
-    subline: "Showcase signature dishes, private events, hours, and reservations in one mobile-first flow.",
-    spotlight: "Chef's tasting menu",
-    cards: ["Dinner menu", "Wine nights", "Private dining"],
-    stats: ["4.8 rating", "Open today", "Book online"],
-  },
-  {
-    id: "service",
-    title: "Service Business",
-    color: "green",
-    line: "Quote requests, service pages, trust signals, and a fast mobile experience.",
-    brand: "Northline Pros",
-    nav: ["Services", "Reviews", "Quote"],
-    kicker: "Local service team",
-    headline: "Get a clean quote before the weekend.",
-    subline: "Turn visitors into leads with service pages, proof points, project photos, and quote requests.",
-    spotlight: "Same-week estimates",
-    cards: ["Roof repair", "Remodeling", "Emergency calls"],
-    stats: ["Licensed", "250+ jobs", "Free quote"],
-  },
-  {
-    id: "portfolio",
-    title: "Creator Portfolio",
-    color: "cyan",
-    line: "Case studies, media, booking links, and a sharp visual identity.",
-    brand: "Avery Studio",
-    nav: ["Work", "About", "Book"],
-    kicker: "Creative portfolio",
-    headline: "Selected work with a premium first impression.",
-    subline: "Present case studies, galleries, press, and booking links in a visual layout that feels custom.",
-    spotlight: "Featured project",
-    cards: ["Brand film", "Photo set", "Campaign"],
-    stats: ["12 case studies", "Media kit", "Now booking"],
   },
 ];
 
@@ -125,7 +79,6 @@ const projectTypes = [
 ];
 
 function App() {
-  const [activeConcept, setActiveConcept] = useState(0);
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -137,14 +90,6 @@ function App() {
     message: "Send your project details directly to NeHost without leaving the site.",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      setActiveConcept((current) => (current + 1) % concepts.length);
-    }, 4200);
-
-    return () => window.clearInterval(timer);
-  }, []);
 
   useEffect(() => {
     const elements = Array.from(document.querySelectorAll("[data-reveal]"));
@@ -372,32 +317,6 @@ function App() {
               Your demo consult is where we translate your business into a page people can trust,
               understand, and act on.
             </p>
-            <div className="concept-tabs" role="tablist" aria-label="Website concept examples">
-              {concepts.map((concept, index) => (
-                <button
-                  aria-selected={activeConcept === index}
-                  className={activeConcept === index ? "is-active" : ""}
-                  key={concept.title}
-                  onClick={() => setActiveConcept(index)}
-                  role="tab"
-                  type="button"
-                >
-                  {concept.title}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="showcase-stage" data-reveal>
-            <img
-              className="showcase-image"
-              src={showcaseImage}
-              alt="Three polished client website concepts displayed across desktop and mobile mockups."
-            />
-            <div className="live-preview" aria-live="polite">
-              <MockBrowser concept={concepts[activeConcept]} />
-              <p>{concepts[activeConcept].line}</p>
-            </div>
           </div>
         </div>
       </section>
@@ -537,54 +456,6 @@ function BrandLogo({ className = "" }) {
         <span className="brand-ne">Ne</span>Host
       </span>
     </a>
-  );
-}
-
-function MockBrowser({ concept }) {
-  return (
-    <div className={`mock-browser mock-${concept.color} mock-${concept.id}`}>
-      <div className="mock-chrome">
-        <span />
-        <span />
-        <span />
-      </div>
-      <div className="mock-site-nav">
-        <strong>{concept.brand}</strong>
-        <div>
-          {concept.nav.map((item) => (
-            <span key={item}>{item}</span>
-          ))}
-        </div>
-      </div>
-      <div className="mock-site-hero">
-        <div className="mock-site-copy">
-          <span>{concept.kicker}</span>
-          <h3>{concept.headline}</h3>
-          <p>{concept.subline}</p>
-        </div>
-        <div className="mock-site-visual" aria-hidden="true">
-          <div className="mock-image-stack">
-            <span />
-            <span />
-            <span />
-          </div>
-          <strong>{concept.spotlight}</strong>
-        </div>
-      </div>
-      <div className="mock-site-cards">
-        {concept.cards.map((card) => (
-          <article key={card}>
-            <span />
-            <strong>{card}</strong>
-          </article>
-        ))}
-      </div>
-      <div className="mock-site-stats">
-        {concept.stats.map((stat) => (
-          <span key={stat}>{stat}</span>
-        ))}
-      </div>
-    </div>
   );
 }
 
