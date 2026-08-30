@@ -14,6 +14,14 @@ export default [
     },
   },
   {
+    files: ["server/**/*.mjs"],
+    languageOptions: {
+      ecmaVersion: "latest",
+      sourceType: "module",
+      globals: globals.node,
+    },
+  },
+  {
     files: ["src/**/*.{js,jsx}"],
     languageOptions: {
       ecmaVersion: "latest",

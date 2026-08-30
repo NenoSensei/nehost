@@ -2,8 +2,11 @@ node_modules/
 dist/
 .env
 .env.local
+.env.production
 .DS_Store
 npm-debug.log*
 *.local
 .vite-dev.*.log
 .vite-dev.pid
+data/
+.tmp-repair-*/

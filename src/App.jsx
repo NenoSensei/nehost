@@ -1,470 +1,88 @@
-import { useEffect, useMemo, useState } from "react";
-import {
-  ArrowRight,
-  CalendarDays,
-  CheckCircle2,
-  ChevronRight,
-  Code2,
-  LifeBuoy,
-  Mail,
-  MonitorSmartphone,
-  Rocket,
-  Send,
-  Server,
-  ShieldCheck,
-  Sparkles,
-  Zap,
-} from "lucide-react";
-import heroImage from "./assets/nehost-hero.png";
-import showcaseImage from "./assets/nehost-showcase.png";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ArrowRight, Check, CheckCircle2, ChevronDown, Clock3, Cpu, Database, HardDriveDownload, KeyRound, LifeBuoy, LockKeyhole, LogOut, Mail, Menu, MonitorCog, Phone, RefreshCw, Search, Send, ShieldCheck, Sun, UserPlus, Users, Wrench, X } from "lucide-react";
 
-const CONTACT_EMAIL = import.meta.env.VITE_CONTACT_EMAIL || "nehost@nenosensei.com";
-const CONTACT_FORM_ENDPOINT =
-  import.meta.env.VITE_CONTACT_FORM_ENDPOINT ||
-  `https://formsubmit.co/ajax/${encodeURIComponent(CONTACT_EMAIL)}`;
-
+const statuses = [
+  { id: "contact-needed", label: "Contact needed", color: "red", description: "We have your request and will contact you." },
+  { id: "in-progress", label: "In progress", color: "yellow", description: "Your device or request is being worked on." },
+  { id: "completed", label: "Completed", color: "green", description: "The work is finished and ready for next steps." },
+];
 const services = [
-  {
-    title: "Custom Website Design",
-    body: "Clean, responsive sites tailored around your brand, offer, and audience.",
-    icon: MonitorSmartphone,
-  },
-  {
-    title: "Fast, Secure Hosting",
-    body: "Launch-ready hosting, SSL, performance checks, and practical uptime care.",
-    icon: Zap,
-  },
-  {
-    title: "Ongoing Support",
-    body: "Updates, backups, maintenance, and improvements after your site is live.",
-    icon: LifeBuoy,
-  },
-  {
-    title: "Built to Grow",
-    body: "Add booking, forms, galleries, payments, automations, and richer pages later.",
-    icon: Rocket,
-  },
+  { icon: HardDriveDownload, title: "Data transfers", body: "Move files, photos, accounts, and settings to a new PC or drive." },
+  { icon: MonitorCog, title: "PC tune-ups", body: "Improve startup time, remove clutter, update software, and check system health." },
+  { icon: Cpu, title: "Custom builds", body: "Parts selection and clean builds for gaming, work, creative apps, or everyday use." },
+  { icon: Wrench, title: "Repair work", body: "Troubleshoot hardware, Windows issues, network problems, and device failures." },
+  { icon: LifeBuoy, title: "PC training", body: "One-on-one lessons for Windows basics, files, email, apps, and safer everyday computer use." },
 ];
-
-const processSteps = [
-  {
-    title: "Tell us about your project",
-    body: "Share your goals, services, must-have pages, and a few sites you like.",
-    icon: Mail,
-  },
-  {
-    title: "We build a demo site",
-    body: "You get a first-look concept so you can see how your site could feel.",
-    icon: Code2,
-  },
-  {
-    title: "Review and refine",
-    body: "We tighten copy, layout, visuals, and functionality around your business.",
-    icon: Sparkles,
-  },
-  {
-    title: "Launch and support",
-    body: "Your site goes live with hosting, security basics, and practical care.",
-    icon: Server,
-  },
+const pricingGroups = [
+  { title: "Common repairs", items: [["Diagnostic and written estimate", "$49", "Applied toward an approved repair within 30 days."], ["Standard computer repair", "From $129", "Common hardware and software repairs; final price follows diagnosis."], ["Gaming PC repair", "From $169", "Extra testing and component complexity included in the starting price."], ["PC tune-up", "$89", "Updates, cleanup, startup review, and a system health check."], ["Malware or virus removal", "$129", "Standard cleanup, security scan, updates, and final testing."], ["Severe malware removal", "From $179", "For persistent infections or systems needing deeper repair."], ["Windows repair", "From $139", "Repair system problems without a full reinstall when possible."], ["Windows reinstall with data preservation", "From $179", "Fresh Windows setup with accessible personal files preserved."]] },
+  { title: "Setup and upgrades", items: [["New computer setup", "$129", "Updates, accounts, security settings, printer connection, and basic apps."], ["Data transfer", "From $149", "Move accessible files, photos, browser data, and settings to a new device."], ["SSD or hard-drive installation", "$79 labor + parts", "Install and test a compatible drive; the drive is quoted separately."], ["SSD installation with data migration", "From $149 + drive", "Install the new drive and move accessible data from the old one."], ["Custom PC assembly", "From $199", "Assembly, BIOS setup, drivers, updates, and basic stability testing."]] },
+  { title: "Support and training", items: [["Remote support", "$79/hour", "Secure help for software, accounts, printers, and everyday PC problems."], ["Onsite support", "$119/hour", "One-hour minimum; travel included within the normal service area."], ["PC training and lessons", "$65/hour", "One-on-one help learning Windows, files, email, apps, and safe browsing."]] },
 ];
-
-const projectTypes = [
-  "Basic business site",
-  "Landing page",
-  "Online booking",
-  "Portfolio",
-  "Restaurant or menu site",
-  "Online store",
-  "Not sure yet",
-];
+const faqs = [["Do I need an account?", "No. Send a ticket with your contact details and we will handle the rest."], ["What happens after I send a ticket?", "We review the request, contact you if needed, and keep the work order status up to date."], ["Will I get status updates?", "Yes. You receive an email when the status changes."]];
+const initialForm = { name: "", email: "", phone: "", assistance: "", company: "" };
 
 function App() {
-  const [form, setForm] = useState({
-    name: "",
-    email: "",
-    type: "Basic business site",
-    message: "",
-  });
-  const [formStatus, setFormStatus] = useState({
-    tone: "idle",
-    message: "Send your project details directly to NeHost without leaving the site.",
-  });
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const pathname = window.location.pathname;
+  if (pathname.startsWith("/admin/reset")) return <ResetPassword />;
+  if (pathname.startsWith("/admin")) return <AdminPortal />;
+  return <CustomerSite />;
+}
 
-  useEffect(() => {
-    const elements = Array.from(document.querySelectorAll("[data-reveal]"));
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add("is-visible");
-            observer.unobserve(entry.target);
-          }
-        });
-      },
-      { threshold: 0.16 },
-    );
-
-    elements.forEach((element) => observer.observe(element));
-    return () => observer.disconnect();
-  }, []);
-
-  const mailtoHref = useMemo(() => {
-    const subject = encodeURIComponent("NeHost demo consultation request");
-    const body = encodeURIComponent(
-      [
-        "Hi NeHost,",
-        "",
-        "I would like to schedule a demo consultation.",
-        "",
-        `Name: ${form.name || ""}`,
-        `Email: ${form.email || ""}`,
-        `Project type: ${form.type || ""}`,
-        "",
-        "Project notes:",
-        form.message || "",
-      ].join("\n"),
-    );
-
-    return `mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`;
-  }, [form]);
-
-  const handleInput = (event) => {
-    const { name, value } = event.target;
-    setForm((current) => ({ ...current, [name]: value }));
-  };
-
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-
-    const name = form.name.trim();
-    const email = form.email.trim();
-    const message = form.message.trim();
-
-    if (!name || !email || !message) {
-      setFormStatus({
-        tone: "error",
-        message: "Please add your name, email, and project notes before sending.",
-      });
-      return;
-    }
-
-    if (!email.includes("@") || !email.includes(".")) {
-      setFormStatus({
-        tone: "error",
-        message: "Please enter a valid email address so we can reply to you.",
-      });
-      return;
-    }
-
-    setIsSubmitting(true);
-    setFormStatus({ tone: "idle", message: "Sending your consultation request..." });
-
-    try {
-      const response = await fetch(CONTACT_FORM_ENDPOINT, {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name,
-          email,
-          "project type": form.type,
-          message,
-          source: "nehost.nenosensei.com contact form",
-          _captcha: "false",
-          _honey: "",
-          _replyto: email,
-          _subject: `NeHost consultation request - ${form.type}`,
-          _template: "table",
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Contact service did not accept the message.");
-      }
-
-      setForm({ name: "", email: "", type: "Basic business site", message: "" });
-      setFormStatus({
-        tone: "success",
-        message: "Message sent. NeHost will follow up with you soon.",
-      });
-    } catch {
-      setFormStatus({
-        tone: "error",
-        message:
-          "The in-site message could not be sent. Please use the email link beside the form.",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const scrollToContact = () => {
-    document.getElementById("contact")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
-
-  return (
+function CustomerSite() {
+  const [form, setForm] = useState(initialForm); const [notice, setNotice] = useState({ tone: "idle", text: "" }); const [ticket, setTicket] = useState(null); const [isSubmitting, setIsSubmitting] = useState(false); const [menuOpen, setMenuOpen] = useState(false); const [theme, setTheme] = useState(() => window.localStorage.getItem("repair-theme") || "dark");
+  useEffect(() => window.localStorage.setItem("repair-theme", theme), [theme]);
+  const submitTicket = async (event) => { event.preventDefault(); setIsSubmitting(true); setNotice({ tone: "idle", text: "Sending your request..." }); try { const response = await fetch("/api/tickets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "The request could not be sent."); setTicket(data.ticket); setForm(initialForm); setNotice({ tone: "success", text: "Your request is in. Keep the work order number for reference." }); } catch (error) { setNotice({ tone: "error", text: error.message }); } finally { setIsSubmitting(false); } };
+  const updateForm = (event) => { const { name, value } = event.target; setForm((current) => ({ ...current, [name]: value })); };
+  const closeMenu = () => setMenuOpen(false);
+  return <div className={`site-shell ${theme === "light" ? "theme-light" : "theme-dark"}`}>
+    <header className="public-header"><a href="#top" className="brand" onClick={closeMenu}><Brand /></a><div className="header-tools"><button className="theme-toggle" type="button" onClick={() => setTheme((current) => current === "dark" ? "light" : "dark")} aria-label="Change color theme">{theme === "dark" ? <Sun size={17} /> : <span>☾</span>}<span>{theme === "dark" ? "Light" : "Dark"}</span></button><button className="menu-button" type="button" aria-label="Toggle navigation" onClick={() => setMenuOpen((open) => !open)}>{menuOpen ? <X size={22} /> : <Menu size={22} />}</button></div><nav className={menuOpen ? "public-nav is-open" : "public-nav"}><a href="#services" onClick={closeMenu}>Services</a><a href="#pricing" onClick={closeMenu}>Pricing</a><a href="#how-it-works" onClick={closeMenu}>How it works</a><a href="#account" onClick={closeMenu}>Account</a><a href="#faq" onClick={closeMenu}>FAQ</a><a className="nav-button" href="#request" onClick={closeMenu}>Open a ticket <ArrowRight size={16} /></a></nav></header>
     <main>
-      <header className="site-header" aria-label="Primary navigation">
-        <BrandLogo />
-        <nav>
-          <a href="#services">Services</a>
-          <a href="#work">Our Work</a>
-          <a href="#pricing">Pricing</a>
-          <a href="#process">Process</a>
-          <a href="#contact">Contact</a>
-        </nav>
-        <button className="header-cta" type="button" onClick={scrollToContact}>
-          <CalendarDays size={17} aria-hidden="true" />
-          <span>Schedule a demo consult</span>
-        </button>
-      </header>
-
-      <section className="hero" id="top">
-        <img className="hero-image" src={heroImage} alt="" aria-hidden="true" />
-        <div className="hero-shell">
-          <div className="hero-copy" data-reveal>
-            <h1>
-              We build and host websites that grow <span>your business.</span>
-            </h1>
-            <p>
-              NeHost creates modern, fast, and secure websites, then hosts and maintains them so
-              you can focus on serving your customers.
-            </p>
-            <div className="hero-actions">
-              <button className="button button-primary" type="button" onClick={scrollToContact}>
-                <CalendarDays size={19} aria-hidden="true" />
-                Schedule a demo consult
-                <ArrowRight size={19} aria-hidden="true" />
-              </button>
-              <a className="button button-secondary" href={mailtoHref}>
-                <Mail size={19} aria-hidden="true" />
-                Email NeHost
-                <ArrowRight size={19} aria-hidden="true" />
-              </a>
-            </div>
-          </div>
-
-          <div className="hero-console" data-reveal>
-            <div className="console-top">
-              <span />
-              <span />
-              <span />
-            </div>
-            <div className="console-line">
-              <strong>Build</strong>
-              <span>responsive design</span>
-            </div>
-            <div className="console-line">
-              <strong>Host</strong>
-              <span>SSL, backups, speed</span>
-            </div>
-            <div className="console-line is-live">
-              <strong>Launch</strong>
-              <span>demo consult ready</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="service-strip" id="services" aria-label="NeHost services">
-        <div className="section-inner service-grid">
-          <div className="strip-heading" data-reveal>
-            <h2>
-              Everything you need. <span>One partner.</span>
-            </h2>
-          </div>
-          {services.map((service) => {
-            const Icon = service.icon;
-            return (
-              <article className="service-item" key={service.title} data-reveal>
-                <Icon aria-hidden="true" size={34} strokeWidth={1.8} />
-                <div>
-                  <h3>{service.title}</h3>
-                  <p>{service.body}</p>
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="pricing-band" id="pricing">
-        <div className="section-inner pricing-layout">
-          <div className="pricing-copy" data-reveal>
-            <h2>
-              Starter sites from <span>$300</span>
-            </h2>
-            <p>Final quote depends on scope.</p>
-          </div>
-          <div className="proof-row" data-reveal>
-            <ProofPoint icon={CheckCircle2} title="Transparent pricing" body="You know what is included before work begins." />
-            <ProofPoint icon={CalendarDays} title="No pressure demo" body="See a demo direction before deciding what to launch." />
-            <ProofPoint icon={ShieldCheck} title="Quality you can count on" body="Modern design, secure hosting basics, and clean handoff." />
-          </div>
-        </div>
-      </section>
-
-      <section className="work-section" id="work">
-        <div className="section-inner work-layout">
-          <div className="work-copy" data-reveal>
-            <h2>
-              Websites that <span>work.</span>
-            </h2>
-            <p>
-              Your demo consult is where we translate your business into a page people can trust,
-              understand, and act on.
-            </p>
-          </div>
-          <div className="work-art" data-reveal>
-            <img
-              className="work-showcase-image"
-              src={showcaseImage}
-              alt="Polished website concepts shown across desktop and mobile layouts."
-            />
-          </div>
-        </div>
-      </section>
-
-      <section className="process-section" id="process">
-        <div className="section-inner">
-          <div className="section-heading" data-reveal>
-            <h2>
-              Our consultation <span>process</span>
-            </h2>
-            <p>Simple, collaborative, and built around what your customers need to see first.</p>
-          </div>
-          <div className="process-grid">
-            {processSteps.map((step, index) => {
-              const Icon = step.icon;
-              return (
-                <article className="process-card" key={step.title} data-reveal>
-                  <div className="step-number">{index + 1}</div>
-                  <Icon aria-hidden="true" size={31} strokeWidth={1.8} />
-                  <h3>{step.title}</h3>
-                  <p>{step.body}</p>
-                  {index < processSteps.length - 1 ? (
-                    <ChevronRight className="step-arrow" size={24} aria-hidden="true" />
-                  ) : null}
-                </article>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      <section className="contact-section" id="contact">
-        <div className="section-inner contact-layout">
-          <div className="contact-copy" data-reveal>
-            <h2>
-              Let&apos;s build something great. <span>Email NeHost.</span>
-            </h2>
-            <p>
-              Send a message and we will start with your goals, then schedule a consultation to
-              walk through a demo site direction.
-            </p>
-            <a className="email-link" href={mailtoHref}>
-              <Mail size={20} aria-hidden="true" />
-              {CONTACT_EMAIL}
-            </a>
-          </div>
-
-          <form className="contact-form" onSubmit={handleSubmit} data-reveal>
-            <label>
-              <span>Your name</span>
-              <input
-                autoComplete="name"
-                name="name"
-                onChange={handleInput}
-                placeholder="Jane Smith"
-                type="text"
-                value={form.name}
-              />
-            </label>
-            <label>
-              <span>Email address</span>
-              <input
-                autoComplete="email"
-                name="email"
-                onChange={handleInput}
-                placeholder="jane@company.com"
-                type="email"
-                value={form.email}
-              />
-            </label>
-            <label>
-              <span>Project type</span>
-              <select name="type" onChange={handleInput} value={form.type}>
-                {projectTypes.map((type) => (
-                  <option key={type}>{type}</option>
-                ))}
-              </select>
-            </label>
-            <label className="message-field">
-              <span>Tell us about your project</span>
-              <textarea
-                name="message"
-                onChange={handleInput}
-                placeholder="What are you looking to build?"
-                rows="5"
-                value={form.message}
-              />
-            </label>
-            <button className="button button-primary form-button" type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Sending..." : "Send message"}
-              <Send size={18} aria-hidden="true" />
-            </button>
-            <p className={`form-status is-${formStatus.tone}`} role="status">
-              {formStatus.message}
-            </p>
-          </form>
-        </div>
-      </section>
-
-      <footer className="site-footer">
-        <div className="section-inner footer-layout">
-          <div>
-            <BrandLogo className="footer-brand" />
-          </div>
-          <div className="footer-links">
-            <a href="#services">Services</a>
-            <a href="#work">Our Work</a>
-            <a href="#pricing">Pricing</a>
-            <a href="#contact">Contact</a>
-          </div>
-        </div>
-      </footer>
-    </main>
-  );
+      <section className="hero-section" id="top"><div className="hero-grid"><div className="hero-copy"><p className="eyebrow"><span className="status-dot green" /> PC service · data transfers · repair</p><h1>Keep your files safe. Keep your PC moving.</h1><p className="hero-lede">Straightforward help for data transfers, PC tune-ups, custom builds, repair work, and one-on-one PC training.</p><div className="hero-actions"><a className="button primary-button" href="#request">Open a service ticket <ArrowRight size={18} /></a><a className="text-link" href="mailto:repair@nenosensei.com"><Mail size={17} /> repair@nenosensei.com</a></div><div className="trust-row"><span><ShieldCheck size={16} /> Privacy-minded handling</span><span><Clock3 size={16} /> Clear status updates</span></div></div><div className="hero-panel" aria-label="Service overview"><div className="panel-header"><span>Service desk</span><span className="live-label"><span className="status-dot green" /> Online</span></div><div className="panel-screen"><div className="screen-row"><span className="screen-icon blue"><Database size={18} /></span><span><strong>Data transfer</strong><small>Move files to a new device</small></span><span className="screen-check"><Check size={16} /></span></div><div className="screen-row"><span className="screen-icon yellow"><MonitorCog size={18} /></span><span><strong>PC tune-up</strong><small>Speed and system health check</small></span><span className="screen-check"><Check size={16} /></span></div><div className="screen-row"><span className="screen-icon red"><Wrench size={18} /></span><span><strong>Repair work</strong><small>Hardware and Windows support</small></span><span className="screen-check"><Check size={16} /></span></div></div><div className="panel-foot"><LockKeyhole size={15} /> Client access is optional</div></div></div></section>
+      <section className="section services-section" id="services"><div className="section-heading"><p className="eyebrow">What we handle</p><h2>Useful help for the devices you use every day.</h2></div><div className="service-grid">{services.map(({ icon: Icon, title, body }) => <article className="service-card" key={title}><span className="service-icon"><Icon size={22} /></span><h3>{title}</h3><p>{body}</p><a href="#request">Request help <ArrowRight size={15} /></a></article>)}</div></section>
+      <section className="section pricing-section" id="pricing"><div className="section-heading"><p className="eyebrow">Straightforward pricing</p><h2>Know what to expect before work begins.</h2><p className="section-intro">Most services have a clear starting price. We confirm the final price with you before doing additional work.</p></div><div className="pricing-grid">{pricingGroups.map((group) => <article className="pricing-card" key={group.title}><h3>{group.title}</h3><div className="pricing-list">{group.items.map(([name, price, description]) => <div className="pricing-item" key={name}><div className="pricing-item-top"><strong>{name}</strong><span>{price}</span></div><p>{description}</p></div>)}</div></article>)}</div><div className="pricing-note"><strong>Good to know</strong><span>Parts, storage devices, software licenses, and sales tax are quoted separately. No additional work is started without your approval.</span></div></section>
+      <section className="status-section" id="how-it-works"><div className="section status-layout"><div className="status-copy"><p className="eyebrow">Simple from start to finish</p><h2>Know where your request stands.</h2><p>Every work order has a clear status. We send an email when the status changes so you do not have to keep checking in.</p><a className="button ghost-button" href="#request">Start a ticket <ArrowRight size={17} /></a></div><div className="status-list">{statuses.map((status, index) => <div className="status-item" key={status.id}><span className={`status-number ${status.color}`}>0{index + 1}</span><div><div className="status-title"><span className={`status-dot ${status.color}`} />{status.label}</div><p>{status.description}</p></div></div>)}</div></div></section>
+      <section className="section request-section" id="request"><div className="request-layout"><div className="request-copy"><p className="eyebrow">Open a service ticket</p><h2>Tell us what needs attention.</h2><p>Give us the basics and we will follow up. You can send a request without an account.</p><div className="privacy-note"><LockKeyhole size={18} /><span><strong>Your information stays private.</strong><br />We only use these details to handle your service request.</span></div></div><form className="ticket-form" onSubmit={submitTicket}><label><span>Name</span><input required name="name" value={form.name} onChange={updateForm} autoComplete="name" placeholder="Your name" /></label><div className="form-row"><label><span>Email</span><input required name="email" type="email" value={form.email} onChange={updateForm} autoComplete="email" placeholder="you@example.com" /></label><label><span>Phone</span><input required name="phone" type="tel" value={form.phone} onChange={updateForm} autoComplete="tel" placeholder="(555) 555-5555" /></label></div><label><span>What do you need help with?</span><textarea required minLength="10" name="assistance" value={form.assistance} onChange={updateForm} placeholder="Tell us about the device, files, or issue." rows="5" /></label><input className="honeypot" tabIndex="-1" autoComplete="off" name="company" value={form.company} onChange={updateForm} aria-hidden="true" /><button className="button primary-button submit-button" type="submit" disabled={isSubmitting}>{isSubmitting ? "Sending..." : "Send service ticket"} <Send size={17} /></button>{notice.text && <p className={`form-notice ${notice.tone}`} role="status">{notice.text}</p>}{ticket && <div className="ticket-confirmation"><CheckCircle2 size={22} /><div><strong>Work order {ticket.id}</strong><span>Status: Contact needed. Check your email for the update.</span></div></div>}</form></div></section>
+      <AccountPanel />
+      <section className="section faq-section" id="faq"><div className="section-heading"><p className="eyebrow">Before you send a request</p><h2>Common questions.</h2></div><div className="faq-list">{faqs.map(([question, answer]) => <details key={question}><summary>{question}<ChevronDown size={18} /></summary><p>{answer}</p></details>)}</div></section>
+    </main><footer className="public-footer"><div><a href="#top" className="brand"><Brand /></a><p>Data transfers, PC tune-ups, custom builds, repair work, and PC training.</p></div><div className="footer-right"><a href="mailto:repair@nenosensei.com">repair@nenosensei.com</a><a href="/admin">Authorized admin</a></div></footer>
+  </div>;
 }
 
-function ProofPoint({ icon: Icon, title, body }) {
-  return (
-    <article className="proof-point">
-      <Icon aria-hidden="true" size={29} strokeWidth={1.8} />
-      <div>
-        <h3>{title}</h3>
-        <p>{body}</p>
-      </div>
-    </article>
-  );
+function AccountPanel() {
+  const [customer, setCustomer] = useState(null); const [mode, setMode] = useState("register"); const [form, setForm] = useState({ name: "", email: "", phone: "", password: "" }); const [orders, setOrders] = useState([]); const [message, setMessage] = useState(""); const [error, setError] = useState("");
+  const loadOrders = async () => { const response = await fetch("/api/account/work-orders"); if (response.ok) setOrders((await response.json()).workOrders); };
+  useEffect(() => { fetch("/api/account/session").then(async (response) => { if (response.ok) { const data = await response.json(); setCustomer(data.customer); await loadOrders(); } }).catch(() => {}); }, []);
+  const submit = async (event) => { event.preventDefault(); setError(""); setMessage(""); const endpoint = mode === "register" ? "/api/account/register" : "/api/account/login"; const body = mode === "register" ? form : { email: form.email, password: form.password }; const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); const data = await response.json(); if (!response.ok) return setError(data.error || "The account request could not be completed."); setCustomer(data.customer); setForm({ name: "", email: "", phone: "", password: "" }); setMessage(mode === "register" ? "Your account is ready." : "You are signed in."); await loadOrders(); };
+  const logout = async () => { await fetch("/api/account/logout", { method: "POST" }); setCustomer(null); setOrders([]); setMessage("You have been signed out."); };
+  return <section className="section account-section" id="account"><div className="account-layout"><div className="account-copy"><p className="eyebrow">Customer account</p><h2>Keep your work orders in one place.</h2><p>Create an account to see your work order numbers and status updates online. You can still send a request without signing up.</p><div className="privacy-note"><LockKeyhole size={18} /><span><strong>Account details are protected.</strong><br />Passwords are stored securely and never shown in the portal.</span></div></div>{customer ? <div className="account-card"><div className="account-card-heading"><div><p className="eyebrow">Signed in</p><h3>{customer.name}</h3><p>{customer.email}</p></div><button className="text-button" type="button" onClick={logout}>Sign out</button></div><div className="account-orders"><div className="account-orders-heading"><strong>Your work orders</strong><span>{orders.length}</span></div>{orders.length ? orders.map((order) => <div className="account-order" key={order.id}><div><strong>{order.id}</strong><span>{new Date(order.createdAt).toLocaleDateString()}</span></div><span className={`status-pill ${(statuses.find((item) => item.id === order.status) || statuses[0]).color}`}>{(statuses.find((item) => item.id === order.status) || statuses[0]).label}</span></div>) : <p className="account-empty">Your submitted work orders will appear here.</p>}</div></div> : <div className="account-card"><div className="account-tabs"><button type="button" className={mode === "register" ? "is-active" : ""} onClick={() => { setMode("register"); setError(""); }}>Create account</button><button type="button" className={mode === "login" ? "is-active" : ""} onClick={() => { setMode("login"); setError(""); }}>Sign in</button></div><form onSubmit={submit}>{mode === "register" && <><label><span>Name</span><input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} autoComplete="name" placeholder="Your name" /></label><label><span>Phone <small>(optional)</small></span><input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} autoComplete="tel" placeholder="(555) 555-5555" /></label></>}<label><span>Email</span><input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} autoComplete="email" placeholder="you@example.com" /></label><label><span>Password</span><input required minLength="12" type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} autoComplete={mode === "register" ? "new-password" : "current-password"} placeholder="At least 12 characters" /></label><button className="button primary-button submit-button" type="submit">{mode === "register" ? "Create account" : "Sign in"} <ArrowRight size={17} /></button>{message && <p className="form-notice success">{message}</p>}{error && <p className="form-notice error" role="alert">{error}</p>}</form></div>}</div></section>;
 }
 
-function BrandLogo({ className = "" }) {
-  return (
-    <a className={`brand ${className}`.trim()} href="#top" aria-label="NeHost home">
-      <span className="brand-mark" aria-hidden="true">
-        <span>N</span>
-        <span>H</span>
-      </span>
-      <span className="brand-word">
-        <span className="brand-ne">Ne</span>Host
-      </span>
-    </a>
-  );
+function AdminPortal() {
+  const [session, setSession] = useState(null); const [loading, setLoading] = useState(true); const [loginForm, setLoginForm] = useState({ username: "", password: "" }); const [loginError, setLoginError] = useState(""); const [showForgotPassword, setShowForgotPassword] = useState(false); const [forgotIdentifier, setForgotIdentifier] = useState(""); const [forgotMessage, setForgotMessage] = useState(""); const [workOrders, setWorkOrders] = useState([]); const [filter, setFilter] = useState("all"); const [search, setSearch] = useState(""); const [message, setMessage] = useState(""); const [section, setSection] = useState("work-orders");
+  const loadWorkOrders = useCallback(async (query = "") => { const response = await fetch(`/api/admin/work-orders?search=${encodeURIComponent(query)}`); if (response.ok) setWorkOrders((await response.json()).workOrders); }, []);
+  useEffect(() => { fetch("/api/admin/session").then(async (response) => { if (!response.ok) throw new Error(); const data = await response.json(); setSession(data); await loadWorkOrders(""); }).catch(() => {}).finally(() => setLoading(false)); }, [loadWorkOrders]);
+  useEffect(() => { if (!session || section !== "work-orders") return undefined; const timer = setTimeout(() => loadWorkOrders(search), 250); return () => clearTimeout(timer); }, [search, session, section, loadWorkOrders]);
+  const login = async (event) => { event.preventDefault(); setLoginError(""); const response = await fetch("/api/admin/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(loginForm) }); const data = await response.json(); if (!response.ok) return setLoginError(data.error || "Login failed."); const sessionResponse = await fetch("/api/admin/session"); const sessionData = await sessionResponse.json(); setSession(sessionData); setLoginForm({ username: "", password: "" }); await loadWorkOrders(""); };
+  const requestPasswordReset = async (event) => { event.preventDefault(); setForgotMessage(""); const response = await fetch("/api/admin/forgot-password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: forgotIdentifier }) }); const data = await response.json(); setForgotMessage(data.message || "If the account is valid, a password reset email will arrive shortly."); };
+  const updateStatus = async (id, status) => { const response = await fetch(`/api/admin/work-orders/${encodeURIComponent(id)}`, { method: "PATCH", headers: { "Content-Type": "application/json", "X-CSRF-Token": session.csrfToken }, body: JSON.stringify({ status }) }); const data = await response.json(); if (!response.ok) return setMessage(data.error || "The status could not be updated."); setWorkOrders((current) => current.map((order) => order.id === id ? data.workOrder : order)); setMessage(data.emailSent ? `Work order ${id} updated. An email was sent for the new status.` : `Work order ${id} updated. Add SMTP settings to send the client email.`); };
+  const deleteWorkOrder = async (id) => { if (!window.confirm(`Delete work order ${id}? This cannot be undone.`)) return; const response = await fetch(`/api/admin/work-orders/${encodeURIComponent(id)}`, { method: "DELETE", headers: { "X-CSRF-Token": session.csrfToken } }); const data = await response.json(); if (!response.ok) return setMessage(data.error || "The work order could not be deleted."); setWorkOrders((current) => current.filter((order) => order.id !== id)); setMessage(`Work order ${id} was deleted.`); };
+  const logout = async () => { await fetch("/api/admin/logout", { method: "POST", headers: { "X-CSRF-Token": session.csrfToken } }); setSession(null); setWorkOrders([]); };
+  const visibleOrders = useMemo(() => filter === "all" ? workOrders : workOrders.filter((order) => order.status === filter), [filter, workOrders]);
+  if (loading) return <div className="admin-shell"><div className="admin-loading">Loading admin portal...</div></div>;
+  if (!session) return <AdminLogin showForgotPassword={showForgotPassword} setShowForgotPassword={setShowForgotPassword} loginForm={loginForm} setLoginForm={setLoginForm} loginError={loginError} setLoginError={setLoginError} login={login} forgotIdentifier={forgotIdentifier} setForgotIdentifier={setForgotIdentifier} forgotMessage={forgotMessage} setForgotMessage={setForgotMessage} requestPasswordReset={requestPasswordReset} />;
+  const counts = statuses.reduce((result, status) => ({ ...result, [status.id]: workOrders.filter((order) => order.status === status.id).length }), {});
+  return <div className="admin-shell"><header className="admin-header"><a className="brand" href="/"><Brand /></a><div><span className="admin-user">{session.user?.name || "Signed in"}</span><button className="icon-button" type="button" onClick={logout} aria-label="Sign out"><LogOut size={18} /></button></div></header><main className="admin-main"><div className="admin-title"><div><p className="eyebrow">Private workspace</p><h1>Business records</h1><p>Manage work orders, customer accounts, and staff access.</p></div><button className="button ghost-button" type="button" onClick={() => section === "work-orders" ? loadWorkOrders(search) : null}><RefreshCw size={16} /> Refresh</button></div><div className="admin-nav-tabs"><button className={section === "work-orders" ? "is-active" : ""} type="button" onClick={() => setSection("work-orders")}><Wrench size={16} /> Work orders</button><button className={section === "customers" ? "is-active" : ""} type="button" onClick={() => setSection("customers")}><Users size={16} /> Customers</button>{session.user?.role === "owner" && <button className={section === "staff" ? "is-active" : ""} type="button" onClick={() => setSection("staff")}><UserPlus size={16} /> Staff access</button>}</div>{section === "work-orders" && <><div className="admin-stat-grid"><StatCard color="red" label="Contact needed" value={counts["contact-needed"] || 0} /><StatCard color="yellow" label="In progress" value={counts["in-progress"] || 0} /><StatCard color="green" label="Completed" value={counts.completed || 0} /></div><div className="ticket-toolbar"><div><h2>Work orders</h2><p>{visibleOrders.length} shown</p></div><div className="work-order-tools"><label className="search-field"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search number, name, email..." aria-label="Search work orders" /></label><select value={filter} onChange={(event) => setFilter(event.target.value)} aria-label="Filter work orders"><option value="all">All statuses</option>{statuses.map((status) => <option key={status.id} value={status.id}>{status.label}</option>)}</select></div></div>{message && <p className="admin-message" role="status">{message}</p>}<div className="admin-ticket-list">{visibleOrders.length === 0 ? <div className="admin-empty"><LifeBuoy size={28} /><h3>No work orders here</h3><p>New customer requests will appear in this workspace.</p></div> : visibleOrders.map((order) => <AdminTicket key={order.id} ticket={order} onStatusChange={updateStatus} onDelete={deleteWorkOrder} />)}</div></>}{section === "customers" && <CustomerManager session={session} setMessage={setMessage} />}{section === "staff" && session.user?.role === "owner" && <StaffManager session={session} setMessage={setMessage} />}</main></div>;
 }
 
+function AdminLogin({ showForgotPassword, setShowForgotPassword, loginForm, setLoginForm, loginError, setLoginError, login, forgotIdentifier, setForgotIdentifier, forgotMessage, setForgotMessage, requestPasswordReset }) { return <div className="admin-shell"><div className="admin-login"><a className="brand" href="/"><Brand /></a><div className="admin-login-card"><p className="eyebrow">Authorized access</p>{showForgotPassword ? <><h1>Reset password</h1><p>Enter your staff username or email. If it is valid, we will send a reset link.</p><form onSubmit={requestPasswordReset}><label><span>Username or email</span><input required value={forgotIdentifier} onChange={(event) => setForgotIdentifier(event.target.value)} autoComplete="username" /></label><button className="button primary-button submit-button" type="submit">Email reset link <Mail size={17} /></button>{forgotMessage && <p className="form-notice success" role="status">{forgotMessage}</p>}</form><button className="text-button" type="button" onClick={() => { setShowForgotPassword(false); setForgotMessage(""); }}>Back to sign in</button></> : <><h1>Business records</h1><p>Sign in to manage work orders and customer information.</p><form onSubmit={login}><label><span>Username</span><input required value={loginForm.username} onChange={(event) => setLoginForm({ ...loginForm, username: event.target.value })} autoComplete="username" /></label><label><span>Password</span><input required type="password" value={loginForm.password} onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })} autoComplete="current-password" /></label><button className="button primary-button submit-button" type="submit">Sign in <ArrowRight size={17} /></button>{loginError && <p className="form-notice error" role="alert">{loginError}</p>}</form><button className="text-button" type="button" onClick={() => { setShowForgotPassword(true); setLoginError(""); }}>Forgot password?</button></>}</div><a className="admin-back" href="/">← Back to customer site</a></div></div>; }
+
+function CustomerManager({ session, setMessage }) { const [customers, setCustomers] = useState([]); const [form, setForm] = useState({ name: "", email: "", phone: "", password: "" }); const [editing, setEditing] = useState(null); const load = async () => { const response = await fetch("/api/admin/customers"); if (response.ok) setCustomers((await response.json()).customers); }; useEffect(() => { load(); }, []); const submit = async (event) => { event.preventDefault(); const method = editing ? "PATCH" : "POST"; const endpoint = editing ? `/api/admin/customers/${editing.id}` : "/api/admin/customers"; const response = await fetch(endpoint, { method, headers: { "Content-Type": "application/json", "X-CSRF-Token": session.csrfToken }, body: JSON.stringify(form) }); const data = await response.json(); if (!response.ok) return setMessage(data.error || "The customer account could not be saved."); setForm({ name: "", email: "", phone: "", password: "" }); setEditing(null); setMessage(editing ? "Customer account updated." : "Customer account created."); await load(); }; return <div className="records-panel"><div className="records-heading"><div><h2>Customer accounts</h2><p>Create and update customer details. Leave the password blank when editing to keep it unchanged.</p></div></div><form className="record-form" onSubmit={submit}><label><span>Name</span><input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label><label><span>Email</span><input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label><label><span>Phone</span><input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></label><label><span>{editing ? "New password (optional)" : "Password"}</span><input required={!editing} minLength="12" type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /></label><div className="record-actions"><button className="button primary-button" type="submit"><Check size={16} />{editing ? "Save customer" : "Create customer"}</button>{editing && <button className="button ghost-button" type="button" onClick={() => { setEditing(null); setForm({ name: "", email: "", phone: "", password: "" }); }}>Cancel</button>}</div></form><div className="record-list">{customers.map((customer) => <div className="record-row" key={customer.id}><div><strong>{customer.name}</strong><span>{customer.email}{customer.phone ? ` · ${customer.phone}` : ""}</span></div><button className="text-button" type="button" onClick={() => { setEditing(customer); setForm({ name: customer.name, email: customer.email, phone: customer.phone, password: "" }); }}>Edit</button></div>)}</div></div>; }
+
+function StaffManager({ session, setMessage }) { const [staff, setStaff] = useState([]); const [form, setForm] = useState({ name: "", username: "", email: "", password: "", role: "admin" }); const [editing, setEditing] = useState(null); const load = async () => { const response = await fetch("/api/admin/staff"); if (response.ok) setStaff((await response.json()).staff); }; useEffect(() => { load(); }, []); const submit = async (event) => { event.preventDefault(); const method = editing ? "PATCH" : "POST"; const endpoint = editing ? `/api/admin/staff/${editing.id}` : "/api/admin/staff"; const response = await fetch(endpoint, { method, headers: { "Content-Type": "application/json", "X-CSRF-Token": session.csrfToken }, body: JSON.stringify(form) }); const data = await response.json(); if (!response.ok) return setMessage(data.error || "The staff account could not be saved."); setForm({ name: "", username: "", email: "", password: "", role: "admin" }); setEditing(null); setMessage(editing ? "Staff account updated." : "Staff access created."); await load(); }; return <div className="records-panel"><div className="records-heading"><div><h2>Staff access</h2><p>Create accounts for employees who need to use the admin portal. Owner access can manage staff; regular admin access manages records.</p></div></div><form className="record-form" onSubmit={submit}><label><span>Name</span><input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label><label><span>Username</span><input required disabled={Boolean(editing)} value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} /></label><label><span>Email</span><input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label><label><span>{editing ? "New password (optional)" : "Password"}</span><input required={!editing} minLength="12" type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /></label><label><span>Access level</span><select value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value })}><option value="admin">Admin</option><option value="owner">Owner</option></select></label><div className="record-actions"><button className="button primary-button" type="submit"><Check size={16} />{editing ? "Save staff account" : "Give access"}</button>{editing && <button className="button ghost-button" type="button" onClick={() => { setEditing(null); setForm({ name: "", username: "", email: "", password: "", role: "admin" }); }}>Cancel</button>}</div></form><div className="record-list">{staff.map((user) => <div className="record-row" key={user.id}><div><strong>{user.name} <span className="role-badge">{user.role}</span></strong><span>{user.username} · {user.email} · {user.active ? "Active" : "Inactive"}</span></div><button className="text-button" type="button" onClick={() => { setEditing(user); setForm({ name: user.name, username: user.username, email: user.email, password: "", role: user.role }); }}>Edit</button></div>)}</div></div>; }
+
+function ResetPassword() { const token = new URLSearchParams(window.location.search).get("token") || ""; const [password, setPassword] = useState(""); const [confirmPassword, setConfirmPassword] = useState(""); const [error, setError] = useState(""); const [complete, setComplete] = useState(false); const resetPassword = async (event) => { event.preventDefault(); setError(""); if (password !== confirmPassword) return setError("The passwords do not match."); if (Array.from(password).length < 12) return setError("Use a password with at least 12 characters."); const response = await fetch("/api/admin/reset-password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token, password }) }); const data = await response.json(); if (!response.ok) return setError(data.error || "The password could not be reset."); setComplete(true); }; return <div className="admin-shell"><div className="admin-login"><a className="brand" href="/"><Brand /></a><div className="admin-login-card"><p className="eyebrow">Authorized access</p><h1>Choose a new password</h1>{complete ? <><p className="form-notice success">Your password has been changed. You can now sign in.</p><a className="button primary-button submit-button" href="/admin">Return to sign in <ArrowRight size={17} /></a></> : <form onSubmit={resetPassword}><p>Use at least 12 characters. This reset link can only be used once.</p><label><span>New password</span><input required minLength="12" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" /></label><label><span>Confirm password</span><input required minLength="12" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" /></label><button className="button primary-button submit-button" type="submit">Change password <KeyRound size={17} /></button>{error && <p className="form-notice error" role="alert">{error}</p>}</form>}</div><a className="admin-back" href="/">← Back to customer site</a></div></div>; }
+
+function AdminTicket({ ticket, onStatusChange, onDelete }) { const status = statuses.find((item) => item.id === ticket.status) || statuses[0]; return <article className="admin-ticket"><div className="admin-ticket-top"><div><span className="ticket-id">{ticket.id}</span><h3>{ticket.name}</h3></div><span className={`status-pill ${status.color}`}><span className="status-dot" />{status.label}</span></div><div className="ticket-meta"><a href={`mailto:${ticket.email}`}><Mail size={15} />{ticket.email}</a><a href={`tel:${ticket.phone}`}><Phone size={15} />{ticket.phone}</a><span><Clock3 size={15} />{new Date(ticket.createdAt).toLocaleString()}</span></div><p className="ticket-request">{ticket.assistance}</p><div className="status-actions">{statuses.map((option) => <button key={option.id} type="button" className={ticket.status === option.id ? `status-choice is-selected ${option.color}` : "status-choice"} onClick={() => onStatusChange(ticket.id, option.id)}>{ticket.status === option.id && <Check size={14} />}{option.label}</button>)}<button className="status-choice danger-choice" type="button" onClick={() => onDelete(ticket.id)}>Delete</button></div></article>; }
+function StatCard({ color, label, value }) { return <div className="stat-card"><span className={`status-dot ${color}`} /><div><strong>{value}</strong><span>{label}</span></div></div>; }
+function Brand() { return <><span className="brand-mark"><span>N</span><span>IT</span></span><span><strong>Neno&apos;s</strong> IT repair</span></>; }
 export default App;

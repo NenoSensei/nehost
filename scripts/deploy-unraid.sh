@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP_NAME="${APP_NAME:-nehost-site}"
-IMAGE_NAME="${IMAGE_NAME:-nehost-site:latest}"
+APP_NAME="${APP_NAME:-nenos-it-repair}"
+IMAGE_NAME="${IMAGE_NAME:-nenos-it-repair:latest}"
 EDGE_NETWORK="${DOCKER_EDGE_NETWORK:-nenosensei-edge}"
 HOST_PORT="${HOST_PORT:-8095}"
 CONTAINER_PORT="${CONTAINER_PORT:-8080}"
@@ -20,8 +20,13 @@ docker run -d \
   --restart unless-stopped \
   --security-opt no-new-privileges:true \
   --network "${EDGE_NETWORK}" \
+  --read-only \
+  --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+  --tmpfs /run:rw,noexec,nosuid,size=8m \
+  --env-file "${ENV_FILE:-.env.production}" \
+  -v "${DATA_VOLUME:-/mnt/user/appdata/nenos-it-repair/data}:/data" \
   -p "127.0.0.1:${HOST_PORT}:${CONTAINER_PORT}" \
   "${IMAGE_NAME}" >/dev/null
 
-echo "NeHost started on container ${APP_NAME}."
+echo "Neno's IT repair started on container ${APP_NAME}."
 echo "Health: http://127.0.0.1:${HOST_PORT}/health"
