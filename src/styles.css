@@ -77,6 +77,24 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .contact-log-form select, .contact-log-form textarea { width: 100%; padding: 10px 11px; border: 1px solid #323b44; border-radius: 8px; color: var(--text); background: #0d1115; font: inherit; font-size: 12px; resize: vertical; }
 .contact-log-form select:focus, .contact-log-form textarea:focus { border-color: var(--blue); outline: none; box-shadow: 0 0 0 3px rgba(101,184,255,.11); }
 .contact-log-form .button { justify-self: start; }
+.client-repair-note-form, .repair-note-section { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
+.client-repair-note-form { display: grid; gap: 12px; }
+.client-repair-note-form label { display: grid; gap: 7px; }
+.client-repair-note-form label span, .repair-note-heading strong { color: var(--soft); font-size: 13px; font-weight: 700; }
+.client-repair-note-form label small { color: var(--yellow); font-size: 10px; font-weight: 700; }
+.client-repair-note-form textarea, .repair-note-form textarea { width: 100%; padding: 10px 11px; border: 1px solid #323b44; border-radius: 8px; color: var(--text); background: #0d1115; font: inherit; font-size: 12px; resize: vertical; }
+.client-repair-note-form textarea:focus, .repair-note-form textarea:focus { border-color: var(--blue); outline: none; box-shadow: 0 0 0 3px rgba(101,184,255,.11); }
+.repair-note-heading { display: flex; justify-content: space-between; gap: 12px; }
+.repair-note-heading span { color: var(--muted); font-size: 11px; }
+.repair-note-list, .repair-note-history { display: grid; gap: 10px; margin-top: 14px; }
+.repair-note-entry { padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: #0e1216; }
+.repair-note-entry span { display: block; color: var(--muted); font-size: 11px; }
+.repair-note-entry p, .repair-note-empty { margin: 8px 0 0; color: var(--soft); font-size: 12px; line-height: 1.55; white-space: pre-wrap; }
+.repair-note-empty { color: var(--muted); }
+.repair-note-form { display: grid; gap: 10px; margin-top: 16px; }
+.repair-note-form .button { justify-self: start; }
+.repair-note-history { padding: 14px; border-radius: 9px; background: rgba(101,184,255,.05); }
+.repair-note-history > strong { color: var(--soft); font-size: 12px; }
  .public-header { display: grid; grid-template-columns: auto 1fr auto; }
  .public-nav { grid-column: 2; grid-row: 1; justify-self: end; }
  .header-tools { display: flex; align-items: center; gap: 8px; grid-column: 3; grid-row: 1; }
