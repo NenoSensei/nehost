@@ -60,6 +60,8 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .text-button { justify-self: start; padding: 0; border: 0; color: var(--muted); background: transparent; cursor: pointer; font-size: 12px; }.text-button:hover { color: var(--blue); }
 @media (max-width: 520px) { .hero-copy h1 { font-size: 43px; }.hero-lede { font-size: 16px; }.hero-actions { align-items: stretch; flex-direction: column; }.hero-actions .button { width: 100%; }.trust-row { flex-direction: column; gap: 9px; }.service-grid, .admin-stat-grid, .form-row { grid-template-columns: 1fr; }.service-card { min-height: auto; }.service-icon { margin-bottom: 24px; }.service-card p { min-height: auto; }.public-footer { flex-direction: column; }.footer-right { align-items: flex-start; }.admin-title { align-items: flex-start; flex-direction: column; }.admin-title h1 { font-size: 37px; }.admin-title .button { width: 100%; }.ticket-toolbar { align-items: flex-start; flex-direction: column; }.ticket-toolbar select { width: 100%; }.admin-ticket-top { flex-direction: column; }.status-pill { order: -1; }.ticket-meta { flex-direction: column; gap: 9px; }.admin-login { padding-top: 45px; } }
 .status-pill.blue { color: var(--blue); background: rgba(101,184,255,.11); }
+.contact-record { display: grid; gap: 13px; padding: 17px 0; border-bottom: 1px solid var(--line); }
+.contact-record:last-child { border-bottom: 0; }
  .public-header { display: grid; grid-template-columns: auto 1fr auto; }
  .public-nav { grid-column: 2; grid-row: 1; justify-self: end; }
  .header-tools { display: flex; align-items: center; gap: 8px; grid-column: 3; grid-row: 1; }

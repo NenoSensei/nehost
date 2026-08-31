@@ -17,12 +17,14 @@ try {
   $customerSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
   $customer = Invoke-RestMethod "$base/api/account/register" -Method Post -WebSession $customerSession -ContentType "application/json" -Body (@{ name = "Test Client"; email = "test@example.com"; phone = "555-0100"; password = "CustomerPassword123!" } | ConvertTo-Json)
   $ticket = Invoke-RestMethod "$base/api/tickets" -Method Post -WebSession $customerSession -ContentType "application/json" -Body (@{ name = "Test Client"; email = "test@example.com"; phone = "555-0100"; assistance = "Please move my files to a new computer." } | ConvertTo-Json)
+  $contact = Invoke-RestMethod "$base/api/contact" -Method Post -ContentType "application/json" -Body (@{ name = "Contact Client"; email = "contact@example.com"; phone = "555-0102"; message = "I have a question about your repair hours." } | ConvertTo-Json)
   $customerOrders = Invoke-RestMethod "$base/api/account/work-orders" -WebSession $customerSession
 
   $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
   Invoke-RestMethod "$base/api/admin/login" -Method Post -WebSession $session -ContentType "application/json" -Body (@{ username = "admin"; password = "TestPassword123!" } | ConvertTo-Json) | Out-Null
   $csrf = Invoke-RestMethod "$base/api/admin/session" -WebSession $session
   $headers = @{ "X-CSRF-Token" = $csrf.csrfToken }
+  $contacts = Invoke-RestMethod "$base/api/admin/contacts?search=contact@example.com" -WebSession $session
   $termsBody = "Published repair terms: I authorize inspection and listed services, understand data loss, hardware failure, pre-existing damage, backup limits, accessories, pricing, additional-work approval, payment, storage, liability limits, non-waivable rights, and electronic records."
   Invoke-RestMethod "$base/api/admin/terms" -Method Post -WebSession $session -Headers $headers -ContentType "application/json" -Body (@{ body = $termsBody } | ConvertTo-Json) | Out-Null
 
@@ -49,6 +51,7 @@ try {
 
   if (("$health").Trim() -ne "ok") { throw "Health check failed: $health" }
   if ($customerOrders.workOrders.Count -ne 1) { throw "Customer work-order list failed." }
+  if ($contact.contact.status -ne "contact-needed" -or $contacts.contacts.Count -ne 1) { throw "Contact request separation failed." }
   if ($ticket.ticket.id -notmatch '^#\d{2}/\d{2}/\d{2}-\d{4}$') { throw "Work-order number format failed." }
   if (-not $inviteCheck.customer.email -or $review.consent.workOrder.services.Count -ne 3) { throw "Invitation or priced service review failed." }
   if ($adminWorkOrder.workOrder.totalCents -ne 22300) { throw "Service total failed: $($adminWorkOrder.workOrder.totalCents)" }
