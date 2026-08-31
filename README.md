@@ -14,6 +14,8 @@ The customer site is served at `http://localhost:3001/`. The private admin porta
 
 Customers can create an account from the Account section or sign in through the separate Orders page. Accounts are optional when submitting a request. Admin-created accounts receive a one-time password setup link that expires after 48 hours. Signed-in customers can see their work orders, notes, device condition, accessories, selected services, prices, approval details, and status. Work-order numbers use `#MM/YY/DD-0001` format.
 
+The public Contact me form creates a separate contact request instead of a repair work order. Contact requests appear in their own admin section with Contact needed or handled status. Repair work orders continue to be created by staff after the service details are confirmed.
+
 Authorized staff can search customer accounts in the admin portal, create work orders for an existing customer, and edit the Notes, internal Repair notes, device condition, accessories, services, prices, and status. Services are stored as ordered line items in integer cents and can be added, removed, repriced, or replaced with custom services. Repair notes are restricted to admin staff and are not returned to customer accounts.
 
 Orders remain Contact needed until the customer reviews the current terms, chooses the accessory and backup options, and signs electronically. The signed order stores the accepted policy text, service-price snapshot, signature name, and timestamp. Admin staff can then move it to In progress. Changing customer-facing order details revokes the old approval and requests a new signature.
