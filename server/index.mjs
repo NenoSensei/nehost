@@ -282,7 +282,9 @@ app.use((req, res, next) => {
   if (process.env.NODE_ENV === "production") {
     const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim().toLowerCase();
     const cloudflareVisitor = String(req.headers["cf-visitor"] || "");
-    if (forwardedProto === "http" || /"scheme"\s*:\s*"http"/i.test(cloudflareVisitor)) return res.redirect(308, `${publicBaseUrl}${req.originalUrl}`);
+    const cloudflareScheme = cloudflareVisitor.match(/"scheme"\s*:\s*"(https?)"/i)?.[1]?.toLowerCase();
+    const requestWasHttp = cloudflareScheme ? cloudflareScheme === "http" : forwardedProto === "http";
+    if (requestWasHttp) return res.redirect(308, `${publicBaseUrl}${req.originalUrl}`);
   }
   return next();
 });
