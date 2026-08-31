@@ -80,11 +80,24 @@ database.run(`
     used_at TEXT,
     created_at TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS work_order_services (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id INTEGER NOT NULL,
+    service_name TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
 `);
 ensureColumn("tickets", "customer_id", "INTEGER");
+ensureColumn("tickets", "notes", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("tickets", "repair_notes", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("tickets", "device_condition", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("tickets", "accessories", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("password_resets", "staff_user_id", "INTEGER");
+database.run("UPDATE tickets SET notes = assistance WHERE notes = '' AND assistance <> ''");
 database.run("CREATE INDEX IF NOT EXISTS idx_tickets_customer_id ON tickets(customer_id)");
 database.run("CREATE INDEX IF NOT EXISTS idx_tickets_updated_at ON tickets(updated_at)");
+database.run("CREATE INDEX IF NOT EXISTS idx_work_order_services_ticket_id ON work_order_services(ticket_id)");
 database.run("CREATE INDEX IF NOT EXISTS idx_customers_email ON customers(email COLLATE NOCASE)");
 database.run("CREATE INDEX IF NOT EXISTS idx_staff_username ON staff_users(username COLLATE NOCASE)");
 migrateInitialAdmin();
@@ -131,7 +144,7 @@ app.post("/api/account/login", loginLimiter, async (req, res) => {
 });
 app.get("/api/account/session", requireCustomer, (req, res) => res.json({ ok: true, customer: publicCustomer(req.customer) }));
 app.post("/api/account/logout", requireCustomer, (req, res) => { customerSessions.delete(req.customerSession.tokenHash); res.clearCookie("neno_customer", { httpOnly: true, sameSite: "lax", path: "/" }); return res.json({ ok: true }); });
-app.get("/api/account/work-orders", requireCustomer, (req, res) => res.json({ workOrders: listWorkOrdersForCustomer(req.customer.id).map(publicTicket) }));
+app.get("/api/account/work-orders", requireCustomer, (req, res) => res.json({ workOrders: listWorkOrdersForCustomer(req.customer.id).map(customerTicket) }));
 
 app.post("/api/tickets", ticketLimiter, async (req, res) => {
   const name = cleanText(req.body.name, 100); const email = cleanText(req.body.email, 254).toLowerCase();
@@ -139,9 +152,9 @@ app.post("/api/tickets", ticketLimiter, async (req, res) => {
   if (honeypot) return res.status(201).json({ ok: true, ticket: { id: "received" } });
   if (!name || !isEmail(email) || !phone || assistance.length < 10) return res.status(400).json({ error: "Please complete each field with valid details." });
   const customer = getCustomerByEmail(email); const customerId = req.customer?.id || customer?.id || null; const now = new Date().toISOString(); const publicId = createWorkOrderId();
-  database.run(`INSERT INTO tickets (public_id, customer_id, name, email, phone, assistance, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'contact-needed', ?, ?)`, [publicId, customerId, name, email, phone, assistance, now, now]);
+  database.run(`INSERT INTO tickets (public_id, customer_id, name, email, phone, assistance, notes, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'contact-needed', ?, ?)`, [publicId, customerId, name, email, phone, assistance, assistance, now, now]);
   persistDatabase(); const ticket = getTicket(publicId); const emailSent = await sendStatusEmail(ticket); const notificationSent = await sendNewTicketNotification(ticket);
-  return res.status(201).json({ ok: true, emailSent, notificationSent, ticket: publicTicket(ticket) });
+  return res.status(201).json({ ok: true, emailSent, notificationSent, ticket: customerTicket(ticket) });
 });
 
 app.post("/api/admin/login", loginLimiter, async (req, res) => {
@@ -166,17 +179,30 @@ app.post("/api/admin/reset-password", resetLimiter, async (req, res) => {
 app.get("/api/admin/session", requireAdmin, (req, res) => { const csrfToken = crypto.randomBytes(24).toString("base64url"); req.session.csrfToken = csrfToken; sessions.set(req.session.tokenHash, req.session); return res.json({ ok: true, csrfToken, user: publicStaff(req.staff) }); });
 app.post("/api/admin/logout", requireAdmin, requireCsrf, (req, res) => { sessions.delete(req.session.tokenHash); res.clearCookie("neno_admin", { httpOnly: true, sameSite: "strict", path: "/" }); return res.json({ ok: true }); });
 
-app.get("/api/admin/work-orders", requireAdmin, (req, res) => res.json({ workOrders: listWorkOrders(cleanText(req.query.search, 120)).map(publicTicket) }));
-app.get("/api/admin/tickets", requireAdmin, (req, res) => res.json({ tickets: listWorkOrders(cleanText(req.query.search, 120)).map(publicTicket) }));
-app.patch("/api/admin/work-orders/:id", requireAdmin, requireCsrf, async (req, res) => {
-  const status = cleanText(req.body.status, 30); if (!validStatuses.has(status)) return res.status(400).json({ error: "That work order status is not available." }); const ticket = getTicket(req.params.id); if (!ticket) return res.status(404).json({ error: "Work order not found." });
-  if (ticket.status !== status) { const updatedAt = new Date().toISOString(); database.run("UPDATE tickets SET status = ?, updated_at = ? WHERE public_id = ?", [status, updatedAt, ticket.public_id]); persistDatabase(); const updatedTicket = getTicket(ticket.public_id); const emailSent = await sendStatusEmail(updatedTicket); return res.json({ ok: true, emailSent, workOrder: publicTicket(updatedTicket), ticket: publicTicket(updatedTicket) }); }
-  return res.json({ ok: true, emailSent: true, workOrder: publicTicket(ticket), ticket: publicTicket(ticket) });
+app.get("/api/admin/work-orders", requireAdmin, (req, res) => res.json({ workOrders: listWorkOrders(cleanText(req.query.search, 120)).map(adminTicket) }));
+app.get("/api/admin/tickets", requireAdmin, (req, res) => res.json({ tickets: listWorkOrders(cleanText(req.query.search, 120)).map(adminTicket) }));
+app.get("/api/admin/customers/:id", requireAdmin, (req, res) => {
+  const customer = getCustomerById(req.params.id);
+  if (!customer) return res.status(404).json({ error: "Customer account not found." });
+  return res.json({ customer: publicCustomer(customer), workOrders: listWorkOrdersForCustomer(customer.id).map(adminTicket) });
 });
-app.patch("/api/admin/tickets/:id", requireAdmin, requireCsrf, async (req, res) => { const status = cleanText(req.body.status, 30); if (!validStatuses.has(status)) return res.status(400).json({ error: "That ticket status is not available." }); const ticket = getTicket(req.params.id); if (!ticket) return res.status(404).json({ error: "Ticket not found." }); if (ticket.status !== status) { const updatedAt = new Date().toISOString(); database.run("UPDATE tickets SET status = ?, updated_at = ? WHERE public_id = ?", [status, updatedAt, ticket.public_id]); persistDatabase(); const updatedTicket = getTicket(ticket.public_id); const emailSent = await sendStatusEmail(updatedTicket); return res.json({ ok: true, emailSent, ticket: publicTicket(updatedTicket) }); } return res.json({ ok: true, emailSent: true, ticket: publicTicket(ticket) }); });
-app.delete("/api/admin/work-orders/:id", requireAdmin, requireCsrf, (req, res) => { if (!getTicket(req.params.id)) return res.status(404).json({ error: "Work order not found." }); database.run("DELETE FROM tickets WHERE public_id = ?", [req.params.id]); persistDatabase(); return res.json({ ok: true, id: req.params.id }); });
+app.post("/api/admin/customers/:id/work-orders", requireAdmin, requireCsrf, async (req, res) => {
+  const customer = getCustomerById(req.params.id);
+  if (!customer) return res.status(404).json({ error: "Customer account not found." });
+  const details = workOrderDetails(req.body);
+  if (!details.notes || !details.deviceCondition) return res.status(400).json({ error: "Notes and device condition are required." });
+  const now = new Date().toISOString(); const publicId = createWorkOrderId();
+  database.run(`INSERT INTO tickets (public_id, customer_id, name, email, phone, assistance, notes, repair_notes, device_condition, accessories, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'contact-needed', ?, ?)`, [publicId, customer.id, customer.name, customer.email, customer.phone, details.notes, details.notes, details.repairNotes, details.deviceCondition, details.accessories, now, now]);
+  const ticketId = database.exec("SELECT id FROM tickets WHERE public_id = ?", [publicId])[0].values[0][0];
+  replaceWorkOrderServices(ticketId, details.services, now);
+  persistDatabase(); const ticket = getTicket(publicId); const emailSent = await sendStatusEmail(ticket); const notificationSent = await sendNewTicketNotification(ticket);
+  return res.status(201).json({ ok: true, emailSent, notificationSent, workOrder: adminTicket(ticket) });
+});
+app.patch("/api/admin/work-orders/:id", requireAdmin, requireCsrf, updateWorkOrder);
+app.patch("/api/admin/tickets/:id", requireAdmin, requireCsrf, updateWorkOrder);
+app.delete("/api/admin/work-orders/:id", requireAdmin, requireCsrf, (req, res) => { const ticket = getTicket(req.params.id); if (!ticket) return res.status(404).json({ error: "Work order not found." }); database.run("DELETE FROM work_order_services WHERE ticket_id = ?", [ticket.id]); database.run("DELETE FROM tickets WHERE id = ?", [ticket.id]); persistDatabase(); return res.json({ ok: true, id: req.params.id }); });
 
-app.get("/api/admin/customers", requireAdmin, (req, res) => res.json({ customers: listCustomers().map(publicCustomer) }));
+app.get("/api/admin/customers", requireAdmin, (req, res) => res.json({ customers: listCustomers(cleanText(req.query.search, 120)).map(publicCustomer) }));
 app.post("/api/admin/customers", requireAdmin, requireCsrf, async (req, res) => {
   const name = cleanText(req.body.name, 100); const email = cleanText(req.body.email, 254).toLowerCase(); const phone = cleanText(req.body.phone, 40); const password = typeof req.body.password === "string" ? req.body.password : "";
   if (!name || !isEmail(email) || Array.from(password).length < 12) return res.status(400).json({ error: "Enter a name, valid email, and password with at least 12 characters." });
@@ -213,22 +239,28 @@ function getStoredAdminPasswordHash() { return database.exec("SELECT password_ha
 function getPasswordReset(tokenHash) { return rowFromQuery("SELECT * FROM password_resets WHERE token_hash = ?", [tokenHash]); }
 function createWorkOrderId() { const next = Number(database.exec("SELECT COALESCE(MAX(id), 0) + 1 FROM tickets")[0]?.values[0]?.[0] || 1); const date = new Date(); return `#${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getFullYear()).slice(-2)}/${String(date.getDate()).padStart(2, "0")}-${String(next).padStart(4, "0")}`; }
 function getTicket(publicId) { return rowFromQuery("SELECT * FROM tickets WHERE public_id = ?", [publicId]); }
-function listWorkOrders(search = "") { if (!search) return rowsFromQuery("SELECT * FROM tickets ORDER BY updated_at DESC"); const term = `%${search}%`; return rowsFromQuery("SELECT * FROM tickets WHERE public_id LIKE ? COLLATE NOCASE OR name LIKE ? COLLATE NOCASE OR email LIKE ? COLLATE NOCASE OR phone LIKE ? COLLATE NOCASE OR assistance LIKE ? COLLATE NOCASE OR status LIKE ? COLLATE NOCASE ORDER BY updated_at DESC", [term, term, term, term, term, term]); }
+function listWorkOrders(search = "") { if (!search) return rowsFromQuery("SELECT * FROM tickets ORDER BY updated_at DESC"); const term = `%${search}%`; return rowsFromQuery("SELECT * FROM tickets WHERE public_id LIKE ? COLLATE NOCASE OR name LIKE ? COLLATE NOCASE OR email LIKE ? COLLATE NOCASE OR phone LIKE ? COLLATE NOCASE OR assistance LIKE ? COLLATE NOCASE OR notes LIKE ? COLLATE NOCASE OR device_condition LIKE ? COLLATE NOCASE OR accessories LIKE ? COLLATE NOCASE OR status LIKE ? COLLATE NOCASE ORDER BY updated_at DESC", [term, term, term, term, term, term, term, term, term]); }
 function listWorkOrdersForCustomer(customerId) { return rowsFromQuery("SELECT * FROM tickets WHERE customer_id = ? OR (customer_id IS NULL AND email = (SELECT email FROM customers WHERE id = ?)) ORDER BY updated_at DESC", [customerId, customerId]); }
 function rowFromQuery(query, params = []) { const result = database.exec(query, params); return result.length ? rowToObject(result[0].columns, result[0].values[0]) : null; }
 function rowsFromQuery(query, params = []) { const result = database.exec(query, params); return result.length ? result[0].values.map((row) => rowToObject(result[0].columns, row)) : []; }
 function rowToObject(columns, row) { return columns.reduce((object, column, index) => ({ ...object, [column]: row[index] }), {}); }
-function publicTicket(ticket) { return { id: ticket.public_id, name: ticket.name, email: ticket.email, phone: ticket.phone, assistance: ticket.assistance, status: ticket.status, createdAt: ticket.created_at, updatedAt: ticket.updated_at }; }
+function customerTicket(ticket) { const notes = ticket.notes || ticket.assistance || ""; return { id: ticket.public_id, name: ticket.name, email: ticket.email, phone: ticket.phone, assistance: notes, notes, deviceCondition: ticket.device_condition || "", accessories: ticket.accessories || "", services: getServicesForTicket(ticket.id), status: ticket.status, createdAt: ticket.created_at, updatedAt: ticket.updated_at }; }
+function adminTicket(ticket) { return { ...customerTicket(ticket), repairNotes: ticket.repair_notes || "" }; }
 function getCustomerByEmail(email) { return rowFromQuery("SELECT * FROM customers WHERE email = ? COLLATE NOCASE", [email]); }
 function getCustomerById(id) { return rowFromQuery("SELECT * FROM customers WHERE id = ?", [id]); }
-function listCustomers() { return rowsFromQuery("SELECT * FROM customers ORDER BY name COLLATE NOCASE"); }
-function publicCustomer(customer) { return { id: customer.id, name: customer.name, email: customer.email, phone: customer.phone, createdAt: customer.created_at }; }
+function listCustomers(search = "") { const where = search ? "WHERE c.name LIKE ? COLLATE NOCASE OR c.email LIKE ? COLLATE NOCASE OR c.phone LIKE ? COLLATE NOCASE" : ""; const term = `%${search}%`; return rowsFromQuery(`SELECT c.*, COUNT(t.id) AS work_order_count FROM customers c LEFT JOIN tickets t ON t.customer_id = c.id ${where} GROUP BY c.id ORDER BY c.name COLLATE NOCASE`, search ? [term, term, term] : []); }
+function publicCustomer(customer) { return { id: customer.id, name: customer.name, email: customer.email, phone: customer.phone, workOrderCount: Number(customer.work_order_count || 0), createdAt: customer.created_at }; }
 function getStaffById(id) { return rowFromQuery("SELECT * FROM staff_users WHERE id = ?", [id]); }
 function getStaffByUsername(username) { return rowFromQuery("SELECT * FROM staff_users WHERE username = ? COLLATE NOCASE", [username]); }
 function getStaffByEmail(email) { return rowFromQuery("SELECT * FROM staff_users WHERE email = ? COLLATE NOCASE", [email]); }
 function getStaffByIdentifier(identifier) { return getStaffByUsername(identifier) || getStaffByEmail(identifier); }
 function listStaff() { return rowsFromQuery("SELECT * FROM staff_users ORDER BY active DESC, name COLLATE NOCASE"); }
 function publicStaff(user) { return { id: user.id, username: user.username, name: user.name, email: user.email, role: user.role, active: Boolean(user.active), createdAt: user.created_at, updatedAt: user.updated_at }; }
+function workOrderDetails(input = {}, existing = null) { const notes = input.notes === undefined ? (existing?.notes || existing?.assistance || "") : cleanText(input.notes, 4000); const repairNotes = input.repairNotes === undefined ? (existing?.repair_notes || "") : cleanText(input.repairNotes, 8000); const deviceCondition = input.deviceCondition === undefined ? (existing?.device_condition || "") : cleanText(input.deviceCondition, 3000); const accessories = input.accessories === undefined ? (existing?.accessories || "") : cleanText(input.accessories, 2000); const services = Array.isArray(input.services) ? normalizeServices(input.services) : existing ? getServicesForTicket(existing.id) : []; return { notes, repairNotes, deviceCondition, accessories, services }; }
+function normalizeServices(services) { return [...new Set(services.filter((service) => typeof service === "string").map((service) => cleanText(service, 120)).filter(Boolean))].slice(0, 20); }
+function getServicesForTicket(ticketId) { return rowsFromQuery("SELECT service_name FROM work_order_services WHERE ticket_id = ? ORDER BY sort_order, id", [ticketId]).map((row) => row.service_name); }
+function replaceWorkOrderServices(ticketId, services, createdAt) { database.run("DELETE FROM work_order_services WHERE ticket_id = ?", [ticketId]); services.forEach((service, index) => database.run("INSERT INTO work_order_services (ticket_id, service_name, sort_order, created_at) VALUES (?, ?, ?, ?)", [ticketId, service, index, createdAt])); }
+async function updateWorkOrder(req, res) { const ticket = getTicket(req.params.id); if (!ticket) return res.status(404).json({ error: "Work order not found." }); const status = req.body.status === undefined ? ticket.status : cleanText(req.body.status, 30); if (!validStatuses.has(status)) return res.status(400).json({ error: "That work order status is not available." }); const details = workOrderDetails(req.body, ticket); if (req.body.notes !== undefined && !details.notes) return res.status(400).json({ error: "Notes cannot be empty." }); if (req.body.deviceCondition !== undefined && !details.deviceCondition) return res.status(400).json({ error: "Device condition cannot be empty." }); const updatedAt = new Date().toISOString(); database.run("UPDATE tickets SET assistance = ?, notes = ?, repair_notes = ?, device_condition = ?, accessories = ?, status = ?, updated_at = ? WHERE public_id = ?", [details.notes, details.notes, details.repairNotes, details.deviceCondition, details.accessories, status, updatedAt, ticket.public_id]); if (Array.isArray(req.body.services)) replaceWorkOrderServices(ticket.id, details.services, updatedAt); persistDatabase(); const updatedTicket = getTicket(ticket.public_id); const emailSent = ticket.status === status ? true : await sendStatusEmail(updatedTicket); return res.json({ ok: true, emailSent, workOrder: adminTicket(updatedTicket), ticket: adminTicket(updatedTicket) }); }
 function persistDatabase() { const temporaryPath = `${databasePath}.tmp`; fs.writeFileSync(temporaryPath, Buffer.from(database.export())); fs.renameSync(temporaryPath, databasePath); }
 function hashToken(token) { return crypto.createHash("sha256").update(token).digest("hex"); }
 function setAdminSession(res, user) { const rawToken = crypto.randomBytes(32).toString("base64url"); sessions.set(hashToken(rawToken), { userId: user.id, expiresAt: Date.now() + sessionTtlMs }); res.cookie("neno_admin", rawToken, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict", maxAge: sessionTtlMs, path: "/" }); }

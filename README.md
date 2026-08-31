@@ -1,6 +1,6 @@
 # Neno's IT repair
 
-Customer intake and private work-order management for data transfers, PC tune-ups, custom builds, and repair work.
+Customer intake and private work-order management for data transfers, PC tune-ups, custom builds, repair work, PC cleaning, and training.
 
 ## Local development
 
@@ -12,7 +12,9 @@ npm run start
 
 The customer site is served at `http://localhost:3001/`. The private admin portal is at `http://localhost:3001/admin`.
 
-Customers can create an account from the Account section on the public site. Accounts are optional when submitting a request, but signed-in customers can see their work orders and status. Work-order numbers use `#MM/YY/DD-0001` format.
+Customers can create an account from the Account section on the public site. Accounts are optional when submitting a request, but signed-in customers can see their work orders, notes, device condition, accessories, selected services, and status. Work-order numbers use `#MM/YY/DD-0001` format.
+
+Authorized staff can search customer accounts in the admin portal, create work orders for an existing customer, and edit the Notes, internal Repair notes, device condition, accessories, services, and status. Repair notes are restricted to admin staff and are not returned to customer accounts. Services can use the public service list or a custom entry.
 
 ## Server configuration
 

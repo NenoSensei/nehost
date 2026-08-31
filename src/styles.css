@@ -146,3 +146,50 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .site-shell.theme-light .account-tabs, .site-shell.theme-light .account-card input, .site-shell.theme-light .record-form input, .site-shell.theme-light .record-form select, .site-shell.theme-light .search-field { background: #fbfcfd; }.site-shell.theme-light .account-card, .site-shell.theme-light .records-panel { box-shadow: 0 15px 45px rgba(54, 79, 96, .08); }
 @media (max-width: 840px) { .account-layout { grid-template-columns: 1fr; gap: 48px; }.work-order-tools { width: 100%; }.search-field { width: 100%; }.record-form { grid-template-columns: 1fr; }.record-actions { grid-column: auto; }.admin-nav-tabs { overflow-x: auto; }.admin-nav-tabs button { flex: 0 0 auto; } }
 @media (max-width: 520px) { .account-card, .records-panel { padding: 20px; }.ticket-toolbar { width: 100%; }.work-order-tools { align-items: stretch; flex-direction: column; }.ticket-toolbar select { width: 100%; }.account-order { align-items: flex-start; flex-direction: column; }.account-card-heading { flex-direction: column; }.account-card-heading .text-button { margin-top: -5px; } }
+
+.customer-manager { display: grid; gap: 18px; }
+.record-search { display: flex; align-items: center; gap: 9px; margin-bottom: 17px; padding: 0 12px; border: 1px solid #323b44; border-radius: 8px; color: var(--muted); background: #0d1115; }
+.record-search input { width: 100%; padding: 12px 0; border: 0; outline: 0; color: var(--text); background: transparent; font-size: 13px; }
+.record-search:focus-within { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(101,184,255,.11); }
+.record-row-button { width: 100%; border: 0; border-bottom: 1px solid var(--line); color: inherit; background: transparent; text-align: left; cursor: pointer; }
+.record-row-button:hover, .record-row-button.is-selected { background: rgba(101,184,255,.07); }
+.record-row-button.is-selected { box-shadow: inset 3px 0 var(--blue); }
+.record-count { color: var(--blue) !important; font-family: "DM Mono", monospace; font-size: 10px !important; white-space: nowrap; }
+.customer-work-orders { display: grid; gap: 18px; }
+.customer-work-orders .records-heading { margin-bottom: 0; }
+.work-order-editor { display: grid; gap: 19px; padding: 21px; border: 1px solid #3b4b59; border-radius: 13px; background: rgba(9,13,17,.52); }
+.editor-heading, .admin-order-row-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.editor-heading h3, .admin-order-row h3 { margin: 0; font-size: 20px; }
+.editor-heading > div > p:not(.eyebrow), .admin-order-row-top + p { margin: 7px 0 0; color: var(--muted); font-size: 12px; }
+.work-order-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.work-order-fields label, .status-field { display: grid; gap: 8px; }
+.work-order-fields label span, .status-field span, .service-selector legend { color: var(--soft); font-size: 12px; font-weight: 700; }
+.work-order-fields small { color: var(--muted); font-weight: 400; }
+.work-order-fields textarea, .status-field select, .custom-service-input input { width: 100%; padding: 12px 13px; border: 1px solid #323b44; border-radius: 8px; outline: none; color: var(--text); background: #0d1115; font: inherit; font-size: 13px; resize: vertical; }
+.work-order-fields textarea { min-height: 110px; }
+.work-order-fields textarea:focus, .status-field select:focus, .custom-service-input input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(101,184,255,.11); }
+.service-selector { display: grid; gap: 13px; margin: 0; padding: 17px; border: 1px solid var(--line); border-radius: 10px; }
+.service-selector legend { padding: 0 6px; }
+.service-selector > p { margin: -4px 0 0; color: var(--muted); font-size: 12px; }
+.service-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.service-options label { display: flex; align-items: center; gap: 9px; padding: 10px; border: 1px solid var(--line); border-radius: 7px; color: var(--soft); font-size: 12px; cursor: pointer; }
+.service-options label:has(input:checked) { border-color: rgba(101,184,255,.55); color: var(--text); background: rgba(101,184,255,.08); }
+.service-options input { accent-color: var(--blue); }
+.custom-service-input { display: flex; gap: 9px; }
+.custom-service-input .button { white-space: nowrap; }
+.selected-custom-service { display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; width: max-content; max-width: 100%; padding: 7px 9px; border: 1px solid rgba(101,184,255,.4); border-radius: 6px; color: var(--blue); background: rgba(101,184,255,.08); cursor: pointer; font-size: 11px; }
+.editor-actions { display: flex; gap: 9px; }
+.admin-order-row { display: grid; gap: 13px; padding: 17px 0; border-bottom: 1px solid var(--line); }
+.admin-order-row:last-child { border-bottom: 0; }
+.admin-order-row .ticket-request { margin: 0; }
+.order-detail-grid, .customer-order-details { display: grid; gap: 11px; }
+.order-detail-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.order-detail-grid div, .customer-order-details > div { padding: 10px 11px; border-radius: 7px; background: #0e1216; }
+.order-detail-grid strong, .customer-order-details strong { display: block; color: var(--soft); font-size: 11px; }
+.order-detail-grid span, .customer-order-details p { display: block; margin: 5px 0 0; color: var(--muted); font-size: 12px; line-height: 1.55; white-space: pre-wrap; }
+.account-order-detail { padding: 14px 0; border-top: 1px solid var(--line); }
+.account-order-detail .account-order-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.customer-order-details { margin-top: 13px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.site-shell.theme-light .record-search, .site-shell.theme-light .work-order-fields textarea, .site-shell.theme-light .status-field select, .site-shell.theme-light .custom-service-input input { background: #fbfcfd; }
+@media (max-width: 700px) { .work-order-fields, .service-options, .order-detail-grid { grid-template-columns: 1fr; } .editor-heading, .admin-order-row-top { flex-direction: column; } .editor-actions { flex-direction: column; } .editor-actions .button { width: 100%; } }

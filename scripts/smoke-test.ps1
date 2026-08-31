@@ -33,6 +33,29 @@ try {
   $csrf = Invoke-RestMethod "http://127.0.0.1:3311/api/admin/session" -WebSession $session
   $tickets = Invoke-RestMethod "http://127.0.0.1:3311/api/admin/work-orders" -WebSession $session
   $search = Invoke-RestMethod "http://127.0.0.1:3311/api/admin/work-orders?search=test@example.com" -WebSession $session
+  $customerSearch = Invoke-RestMethod "http://127.0.0.1:3311/api/admin/customers?search=test@example.com" -WebSession $session
+  $customerDetails = Invoke-RestMethod "http://127.0.0.1:3311/api/admin/customers/$($customer.customer.id)" -WebSession $session
+  $adminWorkOrder = Invoke-RestMethod "http://127.0.0.1:3311/api/admin/customers/$($customer.customer.id)/work-orders" -Method Post -WebSession $session -Headers @{
+    "X-CSRF-Token" = $csrf.csrfToken
+  } -ContentType "application/json" -Body (@{
+    notes = "The client reports intermittent shutdowns."
+    repairNotes = "Inspect power delivery and thermal readings."
+    deviceCondition = "Desktop received powered off with visible dust around the intake."
+    accessories = "Power cable and wireless keyboard."
+    services = @("PC cleaning", "Repair work", "Custom diagnostic")
+  } | ConvertTo-Json)
+  $adminOrderSearch = Invoke-RestMethod "http://127.0.0.1:3311/api/admin/work-orders?search=$([uri]::EscapeDataString($adminWorkOrder.workOrder.id))" -WebSession $session
+  $customerOrdersAfterAdminCreate = Invoke-RestMethod "http://127.0.0.1:3311/api/account/work-orders" -WebSession $customerSession
+  $editedWorkOrder = Invoke-RestMethod "http://127.0.0.1:3311/api/admin/work-orders/$([uri]::EscapeDataString($adminWorkOrder.workOrder.id))" -Method Patch -WebSession $session -Headers @{
+    "X-CSRF-Token" = $csrf.csrfToken
+  } -ContentType "application/json" -Body (@{
+    notes = "Updated issue notes."
+    repairNotes = "Updated private repair notes."
+    deviceCondition = "Updated condition after bench inspection."
+    accessories = "Power cable only."
+    services = @("PC cleaning")
+    status = "in-progress"
+  } | ConvertTo-Json)
   $updated = Invoke-RestMethod "http://127.0.0.1:3311/api/admin/work-orders/$([uri]::EscapeDataString($ticket.ticket.id))" -Method Patch -WebSession $session -Headers @{
     "X-CSRF-Token" = $csrf.csrfToken
   } -ContentType "application/json" -Body (@{ status = "in-progress" } | ConvertTo-Json)
@@ -49,9 +72,16 @@ try {
   if ($customerOrders.workOrders.Count -ne 1) { throw "Customer work-order list failed." }
   if ($ticket.ticket.id -notmatch '^#\d{2}/\d{2}/\d{2}-\d{4}$') { throw "Work-order number format failed: $($ticket.ticket.id)" }
   if ($search.workOrders.Count -ne 1) { throw "Work-order search failed." }
+  if ($customerSearch.customers.Count -ne 1 -or $customerDetails.customer.email -ne "test@example.com") { throw "Customer search or detail lookup failed." }
+  if ($adminWorkOrder.workOrder.id -notmatch '^#\d{2}/\d{2}/\d{2}-\d{4}$') { throw "Admin work-order number format failed: $($adminWorkOrder.workOrder.id)" }
+  if ($adminWorkOrder.workOrder.repairNotes -ne "Inspect power delivery and thermal readings." -or $adminWorkOrder.workOrder.services.Count -ne 3) { throw "Admin work-order details were not saved." }
+  if ($adminOrderSearch.workOrders.Count -ne 1) { throw "Admin work-order number search failed." }
+  $customerAdminOrder = @($customerOrdersAfterAdminCreate.workOrders | Where-Object { $_.id -eq $adminWorkOrder.workOrder.id })[0]
+  if (-not $customerAdminOrder -or $customerAdminOrder.notes -ne "The client reports intermittent shutdowns." -or $customerAdminOrder.deviceCondition -notmatch "visible dust" -or $customerAdminOrder.repairNotes) { throw "Customer work-order visibility failed." }
+  if ($editedWorkOrder.workOrder.notes -ne "Updated issue notes." -or $editedWorkOrder.workOrder.repairNotes -ne "Updated private repair notes." -or $editedWorkOrder.workOrder.services.Count -ne 1) { throw "Work-order editing failed." }
   if ($updated.ticket.status -ne "in-progress") { throw "Ticket status did not update." }
   if ($staff.staff.username -ne "test-employee") { throw "Staff account creation failed." }
-  Write-Output "Smoke test passed: health, account creation, formatted work order, customer history, admin login, search, staff access, and status update."
+  Write-Output "Smoke test passed: account creation, customer search, admin work-order creation/editing, private notes, customer visibility, formatted IDs, search, staff access, and status updates."
 } finally {
   Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath $testData -Recurse -Force -ErrorAction SilentlyContinue
