@@ -222,18 +222,29 @@ database.run(`
     used_at TEXT,
     created_at TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS work_order_contact_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id INTEGER NOT NULL,
+    staff_user_id INTEGER,
+    outcome TEXT NOT NULL,
+    notes TEXT NOT NULL,
+    contacted_at TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
 `);
 ensureColumn("tickets", "customer_id", "INTEGER");
 ensureColumn("tickets", "notes", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("tickets", "repair_notes", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("tickets", "device_condition", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("tickets", "accessories", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("tickets", "completed_at", "TEXT");
 ensureColumn("password_resets", "staff_user_id", "INTEGER");
 ensureColumn("customers", "must_set_password", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("customers", "email_verified", "INTEGER NOT NULL DEFAULT 1");
 ensureColumn("work_order_services", "price_cents", "INTEGER");
 database.run("INSERT OR IGNORE INTO terms_documents (version, body, status, created_at) VALUES (?, ?, 'draft', ?)", [policyVersion, draftTerms, new Date().toISOString()]);
 database.run("UPDATE tickets SET notes = assistance WHERE notes = '' AND assistance <> ''");
+database.run("UPDATE tickets SET completed_at = updated_at WHERE status = 'completed' AND completed_at IS NULL");
 database.run("CREATE INDEX IF NOT EXISTS idx_tickets_customer_id ON tickets(customer_id)");
 database.run("CREATE INDEX IF NOT EXISTS idx_tickets_updated_at ON tickets(updated_at)");
 database.run("CREATE INDEX IF NOT EXISTS idx_work_order_services_ticket_id ON work_order_services(ticket_id)");
@@ -242,6 +253,7 @@ database.run("CREATE INDEX IF NOT EXISTS idx_staff_username ON staff_users(usern
 database.run("CREATE INDEX IF NOT EXISTS idx_customer_invites_customer_id ON customer_invites(customer_id)");
 database.run("CREATE INDEX IF NOT EXISTS idx_work_order_consents_ticket_id ON work_order_consents(ticket_id)");
 database.run("CREATE INDEX IF NOT EXISTS idx_contact_messages_updated_at ON contact_messages(updated_at)");
+database.run("CREATE INDEX IF NOT EXISTS idx_work_order_contact_logs_ticket_id ON work_order_contact_logs(ticket_id, contacted_at DESC)");
 database.run("CREATE INDEX IF NOT EXISTS idx_email_verifications_customer_id ON email_verifications(customer_id)");
 migrateInitialAdmin();
 persistDatabase();
@@ -267,6 +279,7 @@ const resetLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 5, standardHea
 const validStatuses = new Set(["contact-needed", "ready-to-start", "in-progress", "completed"]);
 const validRoles = new Set(["owner", "admin"]);
 const validContactStatuses = new Set(["contact-needed", "completed"]);
+const validContactOutcomes = new Set(["spoke", "left-voicemail", "no-connection"]);
 const serviceChoices = [
   ["Diagnostic and written estimate", 4900], ["Standard computer repair", 12900], ["Gaming PC repair", 16900], ["PC tune-up", 8900], ["PC cleaning", 6900], ["Malware or virus removal", 12900], ["Severe malware removal", 17900], ["Windows repair", 13900], ["Windows reinstall with data preservation", 17900], ["New computer setup", 12900], ["Data transfer", 14900], ["SSD or hard-drive installation", 7900], ["SSD installation with data migration", 14900], ["Custom PC assembly", 19900], ["Remote support", 7900], ["Onsite support", 11900], ["PC training and lessons", 6500],
 ];
@@ -401,7 +414,14 @@ app.post("/api/admin/work-orders/:id/consent", requireAdmin, requireCsrf, async 
   const approval = await createConsentRequest(ticket, true); if (!approval) return res.status(400).json({ error: consentBlockReason(ticket) });
   return res.json({ ok: true, consentUrl: approval.url, emailSent: Boolean(approval.emailSent), workOrder: adminTicket(getTicket(ticket.public_id)) });
 });
-app.delete("/api/admin/work-orders/:id", requireAdmin, requireCsrf, (req, res) => { const ticket = getTicket(req.params.id); if (!ticket) return res.status(404).json({ error: "Work order not found." }); database.run("DELETE FROM work_order_services WHERE ticket_id = ?", [ticket.id]); database.run("DELETE FROM tickets WHERE id = ?", [ticket.id]); persistDatabase(); return res.json({ ok: true, id: req.params.id }); });
+app.post("/api/admin/work-orders/:id/contact-log", requireAdmin, requireCsrf, (req, res) => {
+  const ticket = getTicket(req.params.id); if (!ticket) return res.status(404).json({ error: "Work order not found." });
+  const outcome = cleanText(req.body.outcome, 30); const notes = cleanText(req.body.notes, 2000);
+  if (!validContactOutcomes.has(outcome) || !notes) return res.status(400).json({ error: "Choose a contact outcome and enter what the call was about." });
+  const now = new Date().toISOString(); database.run("INSERT INTO work_order_contact_logs (ticket_id, staff_user_id, outcome, notes, contacted_at, created_at) VALUES (?, ?, ?, ?, ?, ?)", [ticket.id, req.staff.id, outcome, notes, now, now]); persistDatabase();
+  return res.status(201).json({ ok: true, workOrder: adminTicket(getTicket(ticket.public_id)) });
+});
+app.delete("/api/admin/work-orders/:id", requireAdmin, requireCsrf, (req, res) => { const ticket = getTicket(req.params.id); if (!ticket) return res.status(404).json({ error: "Work order not found." }); database.run("DELETE FROM work_order_services WHERE ticket_id = ?", [ticket.id]); database.run("DELETE FROM work_order_contact_logs WHERE ticket_id = ?", [ticket.id]); database.run("DELETE FROM tickets WHERE id = ?", [ticket.id]); persistDatabase(); return res.json({ ok: true, id: req.params.id }); });
 
 app.get("/api/admin/customers", requireAdmin, (req, res) => res.json({ customers: listCustomers(cleanText(req.query.search, 120)).map(publicCustomer) }));
 app.post("/api/admin/customers", requireAdmin, requireCsrf, async (req, res) => {
@@ -462,7 +482,7 @@ function rowFromQuery(query, params = []) { const result = database.exec(query, 
 function rowsFromQuery(query, params = []) { const result = database.exec(query, params); return result.length ? result[0].values.map((row) => rowToObject(result[0].columns, row)) : []; }
 function rowToObject(columns, row) { return columns.reduce((object, column, index) => ({ ...object, [column]: row[index] }), {}); }
 function customerTicket(ticket) { const notes = ticket.notes || ticket.assistance || ""; const consent = getCurrentConsent(ticket.id); return { id: ticket.public_id, name: ticket.name, email: ticket.email, phone: ticket.phone, assistance: notes, notes, deviceCondition: ticket.device_condition || "", accessories: ticket.accessories || "", services: getServicesForTicket(ticket.id), totalCents: getTotalCents(ticket.id), status: ticket.status, consent: safeConsent(consent), consentRequired: !consent?.signed_at, createdAt: ticket.created_at, updatedAt: ticket.updated_at }; }
-function adminTicket(ticket) { const consent = getCurrentConsent(ticket.id); return { ...customerTicket(ticket), repairNotes: ticket.repair_notes || "", adminConsent: consent ? consentDetails(consent) : null }; }
+function adminTicket(ticket) { const consent = getCurrentConsent(ticket.id); const contactLogs = listContactLogs(ticket.id); return { ...customerTicket(ticket), repairNotes: ticket.repair_notes || "", adminConsent: consent ? consentDetails(consent) : null, completedAt: ticket.completed_at || null, daysSinceCompleted: ticket.completed_at ? daysSinceCompleted(ticket.completed_at) : null, lastContactedAt: contactLogs[0]?.contactedAt || null, lastContactOutcome: contactLogs[0]?.outcome || null, contactLogs }; }
 function getCustomerByEmail(email) { return rowFromQuery("SELECT * FROM customers WHERE email = ? COLLATE NOCASE", [email]); }
 function getCustomerById(id) { return rowFromQuery("SELECT * FROM customers WHERE id = ?", [id]); }
 function listCustomers(search = "") { const where = search ? "WHERE c.name LIKE ? COLLATE NOCASE OR c.email LIKE ? COLLATE NOCASE OR c.phone LIKE ? COLLATE NOCASE" : ""; const term = `%${search}%`; return rowsFromQuery(`SELECT c.*, COUNT(t.id) AS work_order_count FROM customers c LEFT JOIN tickets t ON t.customer_id = c.id ${where} GROUP BY c.id ORDER BY c.name COLLATE NOCASE`, search ? [term, term, term] : []); }
@@ -474,6 +494,9 @@ function getStaffByIdentifier(identifier) { return getStaffByUsername(identifier
 function listStaff() { return rowsFromQuery("SELECT * FROM staff_users ORDER BY active DESC, name COLLATE NOCASE"); }
 function publicStaff(user) { return { id: user.id, username: user.username, name: user.name, email: user.email, role: user.role, active: Boolean(user.active), createdAt: user.created_at, updatedAt: user.updated_at }; }
 function publicContactMessage(contact) { return { id: contact.contact_id, name: contact.name, email: contact.email, phone: contact.phone, message: contact.message, status: contact.status, createdAt: contact.created_at, updatedAt: contact.updated_at }; }
+function contactOutcomeLabel(outcome) { return { spoke: "Spoke with client", "left-voicemail": "Left voicemail", "no-connection": "No connection" }[outcome] || outcome; }
+function listContactLogs(ticketId) { return rowsFromQuery("SELECT l.id, l.outcome, l.notes, l.contacted_at, l.created_at, s.name AS staff_name FROM work_order_contact_logs l LEFT JOIN staff_users s ON s.id = l.staff_user_id WHERE l.ticket_id = ? ORDER BY l.contacted_at DESC, l.id DESC", [ticketId]).map((log) => ({ id: log.id, outcome: log.outcome, outcomeLabel: contactOutcomeLabel(log.outcome), notes: log.notes, contactedAt: log.contacted_at, createdAt: log.created_at, staffName: log.staff_name || "Admin staff" })); }
+function daysSinceCompleted(completedAt) { const timestamp = new Date(completedAt).getTime(); return Number.isFinite(timestamp) ? Math.max(0, Math.floor((Date.now() - timestamp) / 86400000)) : null; }
 function workOrderDetails(input = {}, existing = null) { const notes = input.notes === undefined ? (existing?.notes || existing?.assistance || "") : cleanText(input.notes, 4000); const repairNotes = input.repairNotes === undefined ? (existing?.repair_notes || "") : cleanText(input.repairNotes, 8000); const deviceCondition = input.deviceCondition === undefined ? (existing?.device_condition || "") : cleanText(input.deviceCondition, 3000); const accessories = input.accessories === undefined ? (existing?.accessories || "") : cleanText(input.accessories, 2000); const services = Array.isArray(input.services) ? normalizeServices(input.services) : existing ? getServicesForTicket(existing.id) : []; return { notes, repairNotes, deviceCondition, accessories, services }; }
 function normalizeServices(services) { return services.map((service) => { if (typeof service === "string") return { name: cleanText(service, 120), priceCents: null }; if (!service || typeof service !== "object") return null; const priceCents = service.priceCents !== undefined && service.priceCents !== null && service.priceCents !== "" ? Number(service.priceCents) : parsePriceCents(service.price); return { name: cleanText(service.name, 120), priceCents: Number.isInteger(priceCents) && priceCents >= 0 && priceCents <= 100000000 ? priceCents : null }; }).filter((service) => service?.name).slice(0, 20); }
 function parsePriceCents(value) { if (value === null || value === undefined || value === "") return null; const number = typeof value === "number" ? value : Number(String(value).replace(/[$,]/g, "")); if (!Number.isFinite(number) || number < 0 || number > 1000000) return null; return Math.round(number * 100); }
@@ -493,10 +516,10 @@ async function updateWorkOrder(req, res) {
   const oldServices = getServicesForTicket(ticket.id);
   const servicesChanged = Array.isArray(req.body.services) && JSON.stringify(oldServices) !== JSON.stringify(details.services);
   const customerFacingChanged = (req.body.notes !== undefined && details.notes !== (ticket.notes || ticket.assistance || "")) || (req.body.deviceCondition !== undefined && details.deviceCondition !== (ticket.device_condition || "")) || (req.body.accessories !== undefined && details.accessories !== (ticket.accessories || "")) || servicesChanged;
-  const previousConsent = getCurrentConsent(ticket.id); const updatedAt = new Date().toISOString();
-  database.run("UPDATE tickets SET assistance = ?, notes = ?, repair_notes = ?, device_condition = ?, accessories = ?, status = ?, updated_at = ? WHERE public_id = ?", [details.notes, details.notes, details.repairNotes, details.deviceCondition, details.accessories, status, updatedAt, ticket.public_id]);
+  const previousConsent = getCurrentConsent(ticket.id); const updatedAt = new Date().toISOString(); const completedAt = status === "completed" ? (ticket.completed_at || updatedAt) : null;
+  database.run("UPDATE tickets SET assistance = ?, notes = ?, repair_notes = ?, device_condition = ?, accessories = ?, status = ?, completed_at = ?, updated_at = ? WHERE public_id = ?", [details.notes, details.notes, details.repairNotes, details.deviceCondition, details.accessories, status, completedAt, updatedAt, ticket.public_id]);
   if (Array.isArray(req.body.services)) replaceWorkOrderServices(ticket.id, details.services, updatedAt);
-  if (customerFacingChanged && previousConsent?.signed_at) { revokeConsent(previousConsent.id); database.run("UPDATE tickets SET status = 'contact-needed', updated_at = ? WHERE public_id = ?", [updatedAt, ticket.public_id]); }
+  if (customerFacingChanged && previousConsent?.signed_at) { revokeConsent(previousConsent.id); database.run("UPDATE tickets SET status = 'contact-needed', completed_at = NULL, updated_at = ? WHERE public_id = ?", [updatedAt, ticket.public_id]); }
   persistDatabase(); const updatedTicket = getTicket(ticket.public_id); let approval = null;
   if (customerFacingChanged && previousConsent?.signed_at) approval = await createConsentRequest(updatedTicket, true, true);
   const emailSent = approval ? Boolean(approval.emailSent) : ticket.status === status ? true : await sendStatusEmail(updatedTicket);

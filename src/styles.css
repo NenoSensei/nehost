@@ -62,6 +62,21 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .status-pill.blue { color: var(--blue); background: rgba(101,184,255,.11); }
 .contact-record { display: grid; gap: 13px; padding: 17px 0; border-bottom: 1px solid var(--line); }
 .contact-record:last-child { border-bottom: 0; }
+.completion-counter { margin: 15px 0 0; padding: 11px 13px; border: 1px solid rgba(97,210,154,.35); border-radius: 8px; color: var(--green); background: rgba(97,210,154,.08); font-size: 12px; font-weight: 700; }
+.contact-log-section { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
+.contact-log-heading { display: flex; justify-content: space-between; gap: 12px; }
+.contact-log-heading strong { display: block; color: var(--soft); font-size: 13px; }
+.contact-log-heading span, .contact-log-entry span { display: block; margin-top: 5px; color: var(--muted); font-size: 11px; }
+.contact-log-list { display: grid; gap: 10px; margin-top: 14px; }
+.contact-log-entry { padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: #0e1216; }
+.contact-log-entry p, .contact-log-empty { margin: 8px 0 0; color: var(--soft); font-size: 12px; line-height: 1.55; white-space: pre-wrap; }
+.contact-log-empty { color: var(--muted); }
+.contact-log-form { display: grid; gap: 12px; margin-top: 16px; padding: 14px; border-radius: 9px; background: rgba(101,184,255,.05); }
+.contact-log-form label { display: grid; gap: 7px; }
+.contact-log-form label span { color: var(--soft); font-size: 11px; font-weight: 700; }
+.contact-log-form select, .contact-log-form textarea { width: 100%; padding: 10px 11px; border: 1px solid #323b44; border-radius: 8px; color: var(--text); background: #0d1115; font: inherit; font-size: 12px; resize: vertical; }
+.contact-log-form select:focus, .contact-log-form textarea:focus { border-color: var(--blue); outline: none; box-shadow: 0 0 0 3px rgba(101,184,255,.11); }
+.contact-log-form .button { justify-self: start; }
  .public-header { display: grid; grid-template-columns: auto 1fr auto; }
  .public-nav { grid-column: 2; grid-row: 1; justify-self: end; }
  .header-tools { display: flex; align-items: center; gap: 8px; grid-column: 3; grid-row: 1; }

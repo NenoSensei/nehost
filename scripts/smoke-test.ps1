@@ -65,6 +65,11 @@ try {
   $started = Invoke-RestMethod "$base/api/admin/work-orders/$orderId" -Method Patch -WebSession $session -Headers $headers -ContentType "application/json" -Body (@{ status = "in-progress" } | ConvertTo-Json)
   $customerOrdersAfter = Invoke-RestMethod "$base/api/account/work-orders" -WebSession $invitedSession
   $edited = Invoke-RestMethod "$base/api/admin/work-orders/$orderId" -Method Patch -WebSession $session -Headers $headers -ContentType "application/json" -Body (@{ repairNotes = "Updated private repair notes." } | ConvertTo-Json)
+  $completed = Invoke-RestMethod "$base/api/admin/work-orders/$orderId" -Method Patch -WebSession $session -Headers $headers -ContentType "application/json" -Body (@{ status = "completed" } | ConvertTo-Json)
+  $loggedCall = Invoke-RestMethod "$base/api/admin/work-orders/$orderId/contact-log" -Method Post -WebSession $session -Headers $headers -ContentType "application/json" -Body (@{ outcome = "left-voicemail"; notes = "Left a voicemail with pickup instructions." } | ConvertTo-Json)
+  $loggedCall2 = Invoke-RestMethod "$base/api/admin/work-orders/$orderId/contact-log" -Method Post -WebSession $session -Headers $headers -ContentType "application/json" -Body (@{ outcome = "spoke"; notes = "Spoke with client and confirmed pickup timing." } | ConvertTo-Json)
+  $invalidContactBlocked = $false
+  try { Invoke-RestMethod "$base/api/admin/work-orders/$orderId/contact-log" -Method Post -WebSession $session -Headers $headers -ContentType "application/json" -Body (@{ outcome = "invalid"; notes = "" } | ConvertTo-Json) | Out-Null } catch { if ($_.Exception.Response.StatusCode.value__ -ne 400) { throw }; $invalidContactBlocked = $true }
   $search = Invoke-RestMethod "$base/api/admin/work-orders?search=$([uri]::EscapeDataString($adminWorkOrder.workOrder.id))" -WebSession $session
   $staff = Invoke-RestMethod "$base/api/admin/staff" -Method Post -WebSession $session -Headers $headers -ContentType "application/json" -Body (@{ name = "Test Employee"; username = "test-employee"; email = "employee@example.com"; password = "EmployeePassword123!"; role = "admin" } | ConvertTo-Json)
 
@@ -75,10 +80,12 @@ try {
   if (-not $inviteCheck.customer.email -or $review.consent.workOrder.services.Count -ne 3) { throw "Invitation or priced service review failed." }
   if ($adminWorkOrder.workOrder.totalCents -ne 22300) { throw "Service total failed: $($adminWorkOrder.workOrder.totalCents)" }
   if (-not $unsignedBlocked -or $signed.workOrder.status -ne "ready-to-start" -or $started.workOrder.status -ne "in-progress") { throw "Approval status enforcement failed." }
-  if ($customerOrdersAfter.workOrders[0].repairNotes) { throw "Repair notes leaked to customer response." }
+  if ($customerOrdersAfter.workOrders[0].repairNotes -or $customerOrdersAfter.workOrders[0].contactLogs) { throw "Private repair or contact notes leaked to customer response." }
   if ($edited.workOrder.repairNotes -ne "Updated private repair notes." -or $edited.workOrder.status -ne "in-progress") { throw "Private repair-note editing changed the order incorrectly." }
+  if ($completed.workOrder.status -ne "completed" -or $completed.workOrder.daysSinceCompleted -ne 0 -or -not $completed.workOrder.completedAt) { throw "Completion counter failed." }
+  if ($loggedCall2.workOrder.contactLogs.Count -ne 2 -or $loggedCall2.workOrder.lastContactOutcome -ne "spoke" -or -not $loggedCall2.workOrder.lastContactedAt -or -not $invalidContactBlocked) { throw "Call log validation or last-contact tracking failed." }
   if ($search.workOrders.Count -ne 1 -or $staff.staff.username -ne "test-employee") { throw "Admin search or staff access failed." }
-  Write-Output "Smoke test passed: invitations, password setup, priced services, terms, approval, status enforcement, private notes, customer Orders data, search, and staff access."
+  Write-Output "Smoke test passed: invitations, password setup, priced services, terms, approval, status enforcement, completion counter, call logs, private notes, customer Orders data, search, and staff access."
 } finally {
   Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath $testData -Recurse -Force -ErrorAction SilentlyContinue
