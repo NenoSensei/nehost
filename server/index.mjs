@@ -22,6 +22,7 @@ const publicBaseUrl = (process.env.PUBLIC_BASE_URL || "https://repair.nenosensei
 const sessionTtlMs = 8 * 60 * 60 * 1000;
 const resetTokenTtlMs = 30 * 60 * 1000;
 const invitationTtlMs = 48 * 60 * 60 * 1000;
+const verificationTtlMs = 24 * 60 * 60 * 1000;
 const approvalTtlMs = 30 * 24 * 60 * 60 * 1000;
 const policyVersion = "Draft v1";
 const draftTerms = `Neno's IT repair — Service terms and device authorization (Draft v1)
@@ -154,6 +155,14 @@ database.run(`
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS email_verifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    customer_id INTEGER NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TEXT NOT NULL,
+    used_at TEXT,
+    created_at TEXT NOT NULL
+  );
 `);
 ensureColumn("tickets", "customer_id", "INTEGER");
 ensureColumn("tickets", "notes", "TEXT NOT NULL DEFAULT ''");
@@ -162,6 +171,7 @@ ensureColumn("tickets", "device_condition", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("tickets", "accessories", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("password_resets", "staff_user_id", "INTEGER");
 ensureColumn("customers", "must_set_password", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("customers", "email_verified", "INTEGER NOT NULL DEFAULT 1");
 ensureColumn("work_order_services", "price_cents", "INTEGER");
 database.run("INSERT OR IGNORE INTO terms_documents (version, body, status, created_at) VALUES (?, ?, 'draft', ?)", [policyVersion, draftTerms, new Date().toISOString()]);
 database.run("UPDATE tickets SET notes = assistance WHERE notes = '' AND assistance <> ''");
@@ -173,6 +183,7 @@ database.run("CREATE INDEX IF NOT EXISTS idx_staff_username ON staff_users(usern
 database.run("CREATE INDEX IF NOT EXISTS idx_customer_invites_customer_id ON customer_invites(customer_id)");
 database.run("CREATE INDEX IF NOT EXISTS idx_work_order_consents_ticket_id ON work_order_consents(ticket_id)");
 database.run("CREATE INDEX IF NOT EXISTS idx_contact_messages_updated_at ON contact_messages(updated_at)");
+database.run("CREATE INDEX IF NOT EXISTS idx_email_verifications_customer_id ON email_verifications(customer_id)");
 migrateInitialAdmin();
 persistDatabase();
 
@@ -192,6 +203,7 @@ app.use(express.urlencoded({ extended: false, limit: "8kb" }));
 const ticketLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 8, standardHeaders: "draft-8", legacyHeaders: false, message: { error: "Too many requests. Please try again later." } });
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 8, standardHeaders: "draft-8", legacyHeaders: false, message: { error: "Too many login attempts. Please try again later." } });
 const accountLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: "draft-8", legacyHeaders: false, message: { error: "Too many account requests. Please try again later." } });
+const verificationLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 8, standardHeaders: "draft-8", legacyHeaders: false, message: { error: "Too many verification requests. Please try again later." } });
 const resetLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 5, standardHeaders: "draft-8", legacyHeaders: false, message: { error: "Too many reset requests. Please try again later." } });
 const validStatuses = new Set(["contact-needed", "ready-to-start", "in-progress", "completed"]);
 const validRoles = new Set(["owner", "admin"]);
@@ -215,15 +227,18 @@ app.post("/api/account/register", accountLimiter, async (req, res) => {
   if (!name || !isEmail(email) || Array.from(password).length < 12) return res.status(400).json({ error: "Enter your name, a valid email, and a password with at least 12 characters." });
   if (getCustomerByEmail(email)) return res.status(409).json({ error: "An account already exists for that email address." });
   const now = new Date().toISOString(); const passwordHash = await bcrypt.hash(password, 12);
-  database.run("INSERT INTO customers (name, email, phone, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)", [name, email, phone, passwordHash, now, now]);
-  persistDatabase(); const customer = getCustomerByEmail(email); setCustomerSession(res, customer);
-  return res.status(201).json({ ok: true, customer: publicCustomer(customer) });
+  database.run("INSERT INTO customers (name, email, phone, password_hash, must_set_password, email_verified, created_at, updated_at) VALUES (?, ?, ?, ?, 0, 0, ?, ?)", [name, email, phone, passwordHash, now, now]);
+  const customer = getCustomerByEmail(email); const verification = await createEmailVerification(customer); persistDatabase();
+  const response = { ok: true, verificationRequired: true, emailSent: Boolean(verification.emailSent), customer: publicCustomer(customer) };
+  if (process.env.SMOKE_TEST === "true") response.verificationUrl = verification.url;
+  return res.status(201).json(response);
 });
 
 app.post("/api/account/login", loginLimiter, async (req, res) => {
   const email = cleanText(req.body.email, 254).toLowerCase(); const password = typeof req.body.password === "string" ? req.body.password : "";
   const customer = getCustomerByEmail(email);
   if (customer?.must_set_password) return res.status(403).json({ error: "Please use the password setup link sent to your email before signing in." });
+  if (customer && !customer.email_verified) return res.status(403).json({ error: "Please verify your email before signing in." });
   if (!customer || !(await bcrypt.compare(password, customer.password_hash))) return res.status(401).json({ error: "The email or password is not valid." });
   setCustomerSession(res, customer); return res.json({ ok: true, customer: publicCustomer(customer) });
 });
@@ -241,10 +256,21 @@ app.post("/api/account/setup-password", accountLimiter, async (req, res) => {
   const invite = getInvite(hashToken(token));
   if (!invite || invite.used_at || new Date(invite.expires_at) <= new Date()) return res.status(400).json({ error: "This password setup link is invalid or has expired." });
   const now = new Date().toISOString(); const passwordHash = await bcrypt.hash(password, 12);
-  database.run("UPDATE customers SET password_hash = ?, must_set_password = 0, updated_at = ? WHERE id = ?", [passwordHash, now, invite.customer_id]);
+  database.run("UPDATE customers SET password_hash = ?, must_set_password = 0, email_verified = 1, updated_at = ? WHERE id = ?", [passwordHash, now, invite.customer_id]);
   database.run("UPDATE customer_invites SET used_at = ? WHERE id = ?", [now, invite.id]); persistDatabase();
   const customer = getCustomerById(invite.customer_id); setCustomerSession(res, customer);
   return res.json({ ok: true, customer: publicCustomer(customer) });
+});
+app.get("/api/account/verify", verificationLimiter, (req, res) => {
+  const token = cleanText(req.query.token, 200); const verification = getEmailVerification(hashToken(token));
+  if (!verification || verification.used_at || new Date(verification.expires_at) <= new Date()) return res.status(400).json({ error: "This verification link is invalid or has expired." });
+  const now = new Date().toISOString(); database.run("UPDATE customers SET email_verified = 1, updated_at = ? WHERE id = ?", [now, verification.customer_id]); database.run("UPDATE email_verifications SET used_at = ? WHERE id = ?", [now, verification.id]); persistDatabase();
+  return res.json({ ok: true });
+});
+app.post("/api/account/resend-verification", verificationLimiter, async (req, res) => {
+  const email = cleanText(req.body.email, 254).toLowerCase(); const response = { ok: true, message: "If an unverified account exists, a new verification email will arrive shortly." }; const customer = getCustomerByEmail(email);
+  if (!customer || customer.email_verified || customer.must_set_password) return res.json(response);
+  const verification = await createEmailVerification(customer); return res.json({ ...response, emailSent: Boolean(verification.emailSent) });
 });
 app.post("/api/account/work-orders/:id/consent-link", requireCustomer, async (req, res) => {
   const ticket = getTicket(req.params.id);
@@ -323,7 +349,7 @@ app.post("/api/admin/customers", requireAdmin, requireCsrf, async (req, res) => 
   const name = cleanText(req.body.name, 100); const email = cleanText(req.body.email, 254).toLowerCase(); const phone = cleanText(req.body.phone, 40);
   if (!name || !isEmail(email)) return res.status(400).json({ error: "Enter a name and valid email." });
   if (getCustomerByEmail(email)) return res.status(409).json({ error: "That email is already in use." });
-  const now = new Date().toISOString(); database.run("INSERT INTO customers (name, email, phone, password_hash, must_set_password, created_at, updated_at) VALUES (?, ?, ?, '', 1, ?, ?)", [name, email, phone, now, now]); const customer = getCustomerByEmail(email); const invitation = await createCustomerInvitation(customer); persistDatabase(); return res.status(201).json({ ok: true, inviteSent: Boolean(invitation.emailSent), customer: publicCustomer(customer) });
+  const now = new Date().toISOString(); database.run("INSERT INTO customers (name, email, phone, password_hash, must_set_password, email_verified, created_at, updated_at) VALUES (?, ?, ?, '', 1, 0, ?, ?)", [name, email, phone, now, now]); const customer = getCustomerByEmail(email); const invitation = await createCustomerInvitation(customer); persistDatabase(); return res.status(201).json({ ok: true, inviteSent: Boolean(invitation.emailSent), customer: publicCustomer(customer) });
 });
 app.post("/api/admin/customers/:id/invite", requireAdmin, requireCsrf, async (req, res) => {
   const customer = getCustomerById(req.params.id); if (!customer) return res.status(404).json({ error: "Customer account not found." });
@@ -365,6 +391,7 @@ function ensureColumn(table, column, definition) { const columns = database.exec
 function migrateInitialAdmin() { if (getStaffByUsername(adminUsername)) return; const passwordHash = getStoredAdminPasswordHash() || adminPasswordHash; if (!passwordHash) return; const now = new Date().toISOString(); database.run("INSERT INTO staff_users (username, name, email, password_hash, role, active, created_at, updated_at) VALUES (?, ?, ?, ?, 'owner', 1, ?, ?)", [adminUsername, "Account owner", adminEmail || `${adminUsername}@localhost`, passwordHash, now, now]); }
 function getStoredAdminPasswordHash() { return database.exec("SELECT password_hash FROM staff_users WHERE role = 'owner' AND active = 1 LIMIT 1")[0]?.values[0]?.[0] || ""; }
 function getPasswordReset(tokenHash) { return rowFromQuery("SELECT * FROM password_resets WHERE token_hash = ?", [tokenHash]); }
+function getEmailVerification(tokenHash) { return rowFromQuery("SELECT v.*, c.name, c.email FROM email_verifications v JOIN customers c ON c.id = v.customer_id WHERE v.token_hash = ?", [tokenHash]); }
 function createWorkOrderId() { const next = Number(database.exec("SELECT COALESCE(MAX(id), 0) + 1 FROM tickets")[0]?.values[0]?.[0] || 1); const date = new Date(); return `#${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getFullYear()).slice(-2)}/${String(date.getDate()).padStart(2, "0")}-${String(next).padStart(4, "0")}`; }
 function createContactId() { const next = Number(database.exec("SELECT COALESCE(MAX(id), 0) + 1 FROM contact_messages")[0]?.values[0]?.[0] || 1); const date = new Date(); return `C-${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getFullYear()).slice(-2)}/${String(date.getDate()).padStart(2, "0")}-${String(next).padStart(4, "0")}`; }
 function getTicket(publicId) { return rowFromQuery("SELECT * FROM tickets WHERE public_id = ?", [publicId]); }
@@ -380,7 +407,7 @@ function adminTicket(ticket) { const consent = getCurrentConsent(ticket.id); ret
 function getCustomerByEmail(email) { return rowFromQuery("SELECT * FROM customers WHERE email = ? COLLATE NOCASE", [email]); }
 function getCustomerById(id) { return rowFromQuery("SELECT * FROM customers WHERE id = ?", [id]); }
 function listCustomers(search = "") { const where = search ? "WHERE c.name LIKE ? COLLATE NOCASE OR c.email LIKE ? COLLATE NOCASE OR c.phone LIKE ? COLLATE NOCASE" : ""; const term = `%${search}%`; return rowsFromQuery(`SELECT c.*, COUNT(t.id) AS work_order_count FROM customers c LEFT JOIN tickets t ON t.customer_id = c.id ${where} GROUP BY c.id ORDER BY c.name COLLATE NOCASE`, search ? [term, term, term] : []); }
-function publicCustomer(customer) { return { id: customer.id, name: customer.name, email: customer.email, phone: customer.phone, pendingPassword: Boolean(customer.must_set_password), workOrderCount: Number(customer.work_order_count || 0), createdAt: customer.created_at }; }
+function publicCustomer(customer) { return { id: customer.id, name: customer.name, email: customer.email, phone: customer.phone, pendingPassword: Boolean(customer.must_set_password), emailVerified: Boolean(customer.email_verified), workOrderCount: Number(customer.work_order_count || 0), createdAt: customer.created_at }; }
 function getStaffById(id) { return rowFromQuery("SELECT * FROM staff_users WHERE id = ?", [id]); }
 function getStaffByUsername(username) { return rowFromQuery("SELECT * FROM staff_users WHERE username = ? COLLATE NOCASE", [username]); }
 function getStaffByEmail(email) { return rowFromQuery("SELECT * FROM staff_users WHERE email = ? COLLATE NOCASE", [email]); }
@@ -417,6 +444,7 @@ async function updateWorkOrder(req, res) {
   return res.json({ ok: true, emailSent, approvalRevoked: Boolean(approval), workOrder: adminTicket(getTicket(ticket.public_id)), ticket: adminTicket(getTicket(ticket.public_id)) });
 }
 function getInvite(tokenHash) { return rowFromQuery("SELECT i.*, c.name, c.email FROM customer_invites i JOIN customers c ON c.id = i.customer_id WHERE i.token_hash = ?", [tokenHash]); }
+async function createEmailVerification(customer) { database.run("UPDATE email_verifications SET used_at = COALESCE(used_at, ?) WHERE customer_id = ? AND used_at IS NULL", [new Date().toISOString(), customer.id]); const rawToken = crypto.randomBytes(32).toString("base64url"); const now = new Date(); const url = `${publicBaseUrl}/account/verify?token=${encodeURIComponent(rawToken)}`; database.run("INSERT INTO email_verifications (customer_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?)", [customer.id, hashToken(rawToken), new Date(now.getTime() + verificationTtlMs).toISOString(), now.toISOString()]); const emailSent = await sendCustomerVerificationEmail(rawToken, customer); persistDatabase(); return { url, emailSent }; }
 async function createCustomerInvitation(customer) { database.run("UPDATE customer_invites SET used_at = COALESCE(used_at, ?) WHERE customer_id = ? AND used_at IS NULL", [new Date().toISOString(), customer.id]); const rawToken = crypto.randomBytes(32).toString("base64url"); const now = new Date(); const url = `${publicBaseUrl}/account/setup?token=${encodeURIComponent(rawToken)}`; database.run("INSERT INTO customer_invites (customer_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?)", [customer.id, hashToken(rawToken), new Date(now.getTime() + invitationTtlMs).toISOString(), now.toISOString()]); const emailSent = await sendCustomerInviteEmail(rawToken, customer); persistDatabase(); return { url, emailSent }; }
 function listTerms() { return rowsFromQuery("SELECT id, version, body, status, created_at AS createdAt, published_at AS publishedAt FROM terms_documents ORDER BY id DESC"); }
 function getPublishedTerms() { return rowFromQuery("SELECT id, version, body, status, created_at, published_at FROM terms_documents WHERE status = 'published' ORDER BY id DESC LIMIT 1"); }
@@ -443,6 +471,7 @@ function requireCsrf(req, res, next) { const token = req.headers["x-csrf-token"]
 function parseCookie(header) { return header.split(";").reduce((cookies, part) => { const index = part.indexOf("="); if (index > -1) cookies[part.slice(0, index).trim()] = decodeURIComponent(part.slice(index + 1)); return cookies; }, {}); }
 async function sendStatusEmail(ticket) { if (!ticket) return false; const transport = createTransport(); if (!transport) return false; const statusText = { "contact-needed": "Contact needed", "ready-to-start": "Ready to start", "in-progress": "In progress", completed: "Completed" }[ticket.status]; try { await transport.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: ticket.email, replyTo: process.env.REPAIR_REPLY_TO || process.env.SMTP_FROM || process.env.SMTP_USER, subject: `Neno's IT repair — ${ticket.public_id} is ${statusText}`, text: [`Hi ${ticket.name},`, "", `Your Neno's IT repair work order ${ticket.public_id} is now: ${statusText}.`, "", statusMessage(ticket.status), "", "We will contact you if we need more information.", "", "Neno's IT repair"].join("\n") }); return true; } catch (error) { console.error(`Email failed for ${ticket.public_id}:`, error.message); return false; } }
 async function sendCustomerInviteEmail(rawToken, customer) { const transport = createTransport(); if (!transport || !customer?.email) return false; const setupUrl = `${publicBaseUrl}/account/setup?token=${encodeURIComponent(rawToken)}`; try { await transport.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: customer.email, replyTo: process.env.REPAIR_REPLY_TO || process.env.SMTP_FROM || process.env.SMTP_USER, subject: "Neno's IT repair — finish setting up your account", text: [`Hi ${customer.name},`, "", "An account has been created for you at Neno's IT repair.", `Set your password here: ${setupUrl}`, "", "This one-time link expires in 48 hours. You must set a password before signing in.", "If you were not expecting this message, you can ignore it.", "", "Neno's IT repair"].join("\n") }); return true; } catch (error) { console.error(`Customer invitation failed for ${customer.email}:`, error.message); return false; } }
+async function sendCustomerVerificationEmail(rawToken, customer) { const transport = createTransport(); if (!transport || !customer?.email) return false; const verificationUrl = `${publicBaseUrl}/account/verify?token=${encodeURIComponent(rawToken)}`; try { await transport.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: customer.email, replyTo: process.env.REPAIR_REPLY_TO || process.env.SMTP_FROM || process.env.SMTP_USER, subject: "Neno's IT repair — verify your email", text: [`Hi ${customer.name},`, "", "Please verify your email address to finish creating your Neno's IT repair account.", `Verify your email here: ${verificationUrl}`, "", "This one-time link expires in 24 hours. You must verify your email before signing in.", "If you did not create this account, you can ignore this message.", "", "Neno's IT repair"].join("\n") }); return true; } catch (error) { console.error(`Customer verification failed for ${customer.email}:`, error.message); return false; } }
 async function sendContactAcknowledgementEmail(contact) { const transport = createTransport(); if (!transport || !contact?.email) return false; try { await transport.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: contact.email, replyTo: process.env.REPAIR_REPLY_TO || process.env.SMTP_FROM || process.env.SMTP_USER, subject: "Neno's IT repair — we received your message", text: [`Hi ${contact.name},`, "", "We received your message and will get back to you.", `Reference: ${contact.contact_id}`, "", "This is a contact request, not a repair work order. A separate work order will be sent if service is needed.", "", "Neno's IT repair"].join("\n") }); return true; } catch (error) { console.error(`Contact acknowledgement failed for ${contact.email}:`, error.message); return false; } }
 async function sendNewContactNotification(contact) { if (!contact || !adminEmail) return false; const transport = createTransport(); if (!transport) return false; try { await transport.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: adminEmail, replyTo: contact.email, subject: `New contact request — ${contact.contact_id}`, text: ["A new contact request was submitted.", "", `Reference: ${contact.contact_id}`, `Name: ${contact.name}`, `Email: ${contact.email}`, `Phone: ${contact.phone}`, "", "Message:", contact.message, "", `Review contact requests: ${publicBaseUrl}/admin`].join("\n") }); return true; } catch (error) { console.error(`New contact notification failed for ${contact.contact_id}:`, error.message); return false; } }
 async function sendWorkOrderApprovalEmail(ticket, consent, terms, updated, approvalUrl) { const transport = createTransport(); if (!transport || !ticket?.email) return false; const serviceLines = JSON.parse(consent.services_snapshot_json || "[]").map((service) => `- ${service.name}: ${formatMoney(service.priceCents)}`).join("\n") || "- No services listed"; try { await transport.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: ticket.email, replyTo: process.env.REPAIR_REPLY_TO || process.env.SMTP_FROM || process.env.SMTP_USER, subject: `Neno's IT repair — ${updated ? "updated approval needed" : "review work order"} ${ticket.public_id}`, text: [`Hi ${ticket.name},`, "", `${updated ? "The work order has changed and needs your approval again." : "Your work order is ready for your review."}`, `Work order: ${ticket.public_id}`, "", "Notes:", ticket.notes || ticket.assistance || "", "", "Services and prices:", serviceLines, `Quoted service total: ${formatMoney(consent.total_cents)}`, "", "Device condition:", ticket.device_condition || "Not recorded", "", "Accessories recorded by the shop:", ticket.accessories || "None recorded", "", "Repairs will not begin until you complete the approval.", `Review and sign: ${approvalUrl}`, "", `Terms and liability policy (${terms.version}):`, terms.body, "", "Neno's IT repair"].join("\n") }); return true; } catch (error) { console.error(`Approval email failed for ${ticket.public_id}:`, error.message); return false; } }

@@ -12,7 +12,7 @@ npm run start
 
 The customer site is served at `http://localhost:3001/`. The private admin portal is at `http://localhost:3001/admin`.
 
-Customers can create an account from the Account section or sign in through the separate Orders page. Accounts are optional when submitting a request. Admin-created accounts receive a one-time password setup link that expires after 48 hours. Signed-in customers can see their work orders, notes, device condition, accessories, selected services, prices, approval details, and status. Work-order numbers use `#MM/YY/DD-0001` format.
+Customers can create an account from `/account` or sign in through the separate Orders page. New customer accounts must verify their email with a one-time link that expires after 24 hours before they can sign in. Accounts are optional when submitting a request. Admin-created accounts receive a one-time password setup link that expires after 48 hours. Signed-in customers can see their work orders, notes, device condition, accessories, selected services, prices, approval details, and status. Work-order numbers use `#MM/YY/DD-0001` format.
 
 The public Contact me form creates a separate contact request instead of a repair work order. Contact requests appear in their own admin section with Contact needed or handled status. Repair work orders continue to be created by staff after the service details are confirmed.
 
@@ -25,6 +25,8 @@ The owner can publish versioned terms from the Terms section of the admin portal
 ## Server configuration
 
 Copy `.env.example` to `.env.production` on the server and set real values. `ADMIN_PASSWORD_HASH` must be a bcrypt hash; never put a plain password in the environment or source code. On first startup, the environment-backed admin is migrated into the staff account table as the owner account. From the admin portal, the owner can create and edit staff access, customer accounts, and terms. SMTP values are required for invitation emails, work-order approval emails, signed-approval confirmations, client status emails, new-work-order notifications, and admin password-reset links. `ADMIN_EMAIL` receives new-request and signed-approval notifications; if omitted, it falls back to `SMTP_USER`. Email failures do not discard saved records.
+
+Account registration is protected by strict field limits, a honeypot, duplicate-email checks, email verification, and rate limits on registration, login, verification, password setup, and contact requests. The resend-verification endpoint returns a generic response so it does not reveal whether an email address has an account.
 
 Generate a password hash with:
 

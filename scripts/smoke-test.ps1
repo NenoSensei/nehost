@@ -8,6 +8,7 @@ $env:ADMIN_USERNAME = "admin"
 $env:ADMIN_EMAIL = "owner@example.com"
 $env:PORT = "3311"
 $env:PUBLIC_BASE_URL = "http://127.0.0.1:3311"
+$env:SMOKE_TEST = "true"
 $process = Start-Process -FilePath node -ArgumentList "server/index.mjs" -PassThru -WindowStyle Hidden
 
 try {
@@ -16,6 +17,17 @@ try {
   $health = Invoke-RestMethod "$base/health"
   $customerSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
   $customer = Invoke-RestMethod "$base/api/account/register" -Method Post -WebSession $customerSession -ContentType "application/json" -Body (@{ name = "Test Client"; email = "test@example.com"; phone = "555-0100"; password = "CustomerPassword123!" } | ConvertTo-Json)
+  if (-not $customer.verificationRequired -or -not $customer.verificationUrl) { throw "Customer registration did not require email verification." }
+  $unverifiedLoginBlocked = $false
+  try { Invoke-RestMethod "$base/api/account/login" -Method Post -ContentType "application/json" -Body (@{ email = "test@example.com"; password = "CustomerPassword123!" } | ConvertTo-Json) | Out-Null } catch { if ($_.Exception.Response.StatusCode.value__ -ne 403) { throw }; $unverifiedLoginBlocked = $true }
+  if (-not $unverifiedLoginBlocked) { throw "Unverified customer login was not blocked." }
+  $verificationToken = ([uri]$customer.verificationUrl).Query.Substring(7)
+  $verified = Invoke-RestMethod "$base/api/account/verify?token=$([uri]::EscapeDataString($verificationToken))"
+  $reusedVerificationBlocked = $false
+  try { Invoke-RestMethod "$base/api/account/verify?token=$([uri]::EscapeDataString($verificationToken))" | Out-Null } catch { if ($_.Exception.Response.StatusCode.value__ -ne 400) { throw }; $reusedVerificationBlocked = $true }
+  if (-not $verified.ok -or -not $reusedVerificationBlocked) { throw "Email verification lifecycle failed." }
+  Invoke-RestMethod "$base/api/account/resend-verification" -Method Post -ContentType "application/json" -Body (@{ email = "missing@example.com" } | ConvertTo-Json) | Out-Null
+  Invoke-RestMethod "$base/api/account/login" -Method Post -WebSession $customerSession -ContentType "application/json" -Body (@{ email = "test@example.com"; password = "CustomerPassword123!" } | ConvertTo-Json) | Out-Null
   $ticket = Invoke-RestMethod "$base/api/tickets" -Method Post -WebSession $customerSession -ContentType "application/json" -Body (@{ name = "Test Client"; email = "test@example.com"; phone = "555-0100"; assistance = "Please move my files to a new computer." } | ConvertTo-Json)
   $contact = Invoke-RestMethod "$base/api/contact" -Method Post -ContentType "application/json" -Body (@{ name = "Contact Client"; email = "contact@example.com"; phone = "555-0102"; message = "I have a question about your repair hours." } | ConvertTo-Json)
   $customerOrders = Invoke-RestMethod "$base/api/account/work-orders" -WebSession $customerSession
