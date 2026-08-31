@@ -24,24 +24,83 @@ const resetTokenTtlMs = 30 * 60 * 1000;
 const invitationTtlMs = 48 * 60 * 60 * 1000;
 const verificationTtlMs = 24 * 60 * 60 * 1000;
 const approvalTtlMs = 30 * 24 * 60 * 60 * 1000;
-const policyVersion = "Draft v1";
-const draftTerms = `Neno's IT repair — Service terms and device authorization (Draft v1)
+const policyVersion = "Draft v2";
+const draftTerms = `Neno's IT Repair — Service Terms, Device Authorization, and Privacy Policy (Draft v2)
 
-By signing this work order, I authorize Neno's IT repair to inspect my device and perform only the services listed on this order. I understand that inspection, cleaning, repair, updates, and data work can involve risks including data loss, hardware failure, loss of settings, and discovery of pre-existing damage.
+DRAFT — NOT CURRENTLY IN EFFECT. This policy is prepared for business-owner review and review by a qualified Pennsylvania attorney. It becomes effective only when published by Neno's IT Repair.
 
-I have selected whether I want a data backup. I understand a backup is not guaranteed unless the backup service is specifically completed and confirmed. I am responsible for keeping my own copies of important data.
+Business: Neno's IT Repair, Philadelphia, Pennsylvania
+Notices and privacy requests: repair@nenosensei.com
 
-I have reviewed the device condition and accessories recorded on this order and confirm that they are accurate to the best of my knowledge. Neno's IT repair is not responsible for pre-existing damage, normal wear, or failure of parts that were already defective.
+1. Agreement
 
-I approve the services and prices shown on this order. Additional services or price changes require my approval before work continues. Parts, tax, and separately approved work are not included in the quoted service total unless listed on the order.
+By submitting a work order, leaving a device with Neno's IT Repair, approving services, or signing electronically, the customer agrees to the terms that apply to that work order. If the customer is not the device owner, the customer confirms that they have the owner's permission to request service and authorize access to the device.
 
-To the maximum extent allowed by law, I release Neno's IT repair from indirect or consequential loss related to the service. This does not waive rights that cannot legally be waived.
+2. Authorization and scope of service
 
-I understand payment, storage, pickup, and unclaimed-device terms shown by Neno's IT repair. I consent to receive and retain this work order and related terms electronically, and I understand I may print or save a copy.
+The customer authorizes Neno's IT Repair to inspect, test, clean, repair, configure, transfer, back up, or otherwise service the device only as described on the approved work order. Additional services, parts, or price changes require customer approval before the additional work begins. Limited additional diagnostic work may be performed when reasonably necessary to identify the reported problem.
 
-By entering my full legal name and checking the required boxes, I agree to this order and these terms.
+The customer confirms that the requested work is lawful and that the customer has authority to provide the device and authorize the requested service. Neno's IT Repair may refuse work that is unsafe, unlawful, outside its capabilities, or likely to create unreasonable risk.
 
-This policy is a draft for business-owner review and qualified legal review before reliance.`;
+3. Device condition and accessories
+
+The customer agrees that the device condition and accessories recorded on the work order are accurate to the best of the customer's knowledge. Neno's IT Repair is not responsible for pre-existing damage, normal wear, corrosion, liquid damage, missing parts, defective components, weakened hinges, cracked screens, damaged ports, or problems that become apparent during ordinary inspection or repair.
+
+4. Data, backups, and credentials
+
+The customer is responsible for maintaining current backups of important files before service. If backup service is selected, Neno's IT Repair will make a reasonable effort to perform the approved backup, but a backup is not guaranteed to succeed or contain every file. The customer must confirm that important files were successfully preserved.
+
+Repair, cleaning, updates, operating-system work, storage failure, malware removal, file transfers, and hardware failure may result in data loss, corrupted files, lost settings, or loss of access. To the maximum extent permitted by law, Neno's IT Repair is not responsible for loss of data or files unless the law does not allow that limitation.
+
+Customers should not provide passwords by email, text message, or through the website. When access credentials are necessary, the customer should use a temporary password whenever possible and change it after service. Neno's IT Repair will not intentionally inspect personal files unless access is reasonably necessary to perform or verify the approved service.
+
+5. Prices, parts, payment, and warranty
+
+The quoted service total covers only the services listed on the work order. Parts, taxes, shipping, rush work, third-party charges, and separately approved work may be billed separately. Payment is due when stated on the invoice or work order.
+
+Neno's IT Repair does not guarantee that every problem can be repaired, that a device will remain operational after repair, or that a particular performance improvement will be achieved. Only a warranty specifically written on the applicable work order applies. No other warranty is made to the maximum extent permitted by law.
+
+6. Storage and unclaimed devices
+
+The customer must collect the device within 30 days after Neno's IT Repair gives notice that service is complete or the device is ready for pickup. After the 30-day grace period, Neno's IT Repair may charge a storage fee of $5 per day, where legally permitted.
+
+After a reasonable notice period and any notices required by Pennsylvania law, Neno's IT Repair may take lawful steps to dispose of or sell an unclaimed device to recover unpaid charges. The customer remains responsible for approved charges, storage charges, and reasonable collection costs to the extent permitted by law.
+
+7. Liability limits
+
+To the maximum extent permitted by Pennsylvania law, Neno's IT Repair will not be responsible for indirect, incidental, special, consequential, or lost-profit damages, including loss of data, business interruption, lost revenue, lost files, or loss of use.
+
+To the maximum extent permitted by law, Neno's IT Repair's total liability for a claim related to a service will not exceed the amount the customer paid for the specific service giving rise to the claim. These limits do not waive rights or liabilities that cannot legally be waived.
+
+8. Privacy and information handling
+
+Neno's IT Repair may collect the customer's name, email address, phone number, account information, work-order details, device information, accessories, service selections, prices, messages, approvals, typed signatures, policy versions accepted, and transaction information handled by the selected payment provider.
+
+This information is used to provide and document services, communicate about work orders and payments, maintain customer accounts, prevent unauthorized access and abuse, respond to requests, maintain business and legal records, and protect customers, employees, and the business.
+
+Neno's IT Repair does not sell or rent customer personal information. Information may be shared only when reasonably necessary with authorized employees, hosting providers, email providers, payment processors, technical service providers, professional advisers, law enforcement, or government authorities with lawful authority.
+
+Employees and contractors may access customer information only when needed to provide service, maintain systems, process a transaction, or meet a legal obligation. Neno's IT Repair will collect only information reasonably needed for its business, use reasonable safeguards appropriate to the information, and securely dispose of information when it is no longer needed for a legitimate business, legal, tax, security, warranty, or dispute-related purpose.
+
+Customers may contact repair@nenosensei.com to request correction of inaccurate account information, ask how their information is used, request applicable records, or request deletion when the information is no longer needed for a legitimate retention purpose. Some records may need to be retained for legal, accounting, security, fraud-prevention, warranty, or dispute-related reasons.
+
+Neno's IT Repair will investigate suspected security incidents and provide notices required by applicable law. No website, email system, or storage system can be guaranteed completely secure.
+
+9. Electronic records and signatures
+
+The customer agrees that work orders, approvals, notices, invoices, and related terms may be provided electronically. The customer confirms that they can access and retain electronic records using an internet-connected device and a current web browser.
+
+The customer may request a paper copy by contacting repair@nenosensei.com. The customer may withdraw consent to electronic records by contacting the same address. Withdrawal may delay service or require paper records.
+
+The customer's typed full legal name, submitted with the required acknowledgements, is intended to be an electronic signature for the applicable work order. The accepted policy version and exact policy text will be retained with the signed work order.
+
+10. Changes and governing law
+
+Neno's IT Repair may update these terms by publishing a new version. The version accepted by the customer will be retained with the signed work order. These terms are governed by the laws of the Commonwealth of Pennsylvania, without waiving rights that cannot legally be waived.
+
+11. Customer acknowledgement
+
+By signing a work order, the customer confirms that they authorized the requested services, reviewed the notes, device condition, accessories, services, and prices, understand the backup and data-loss limitations, had an opportunity to review these terms, agree to the privacy practices above, consent to electronic records, and understand that repairs will not begin until the required approval is completed.`;
 const sessions = new Map();
 const customerSessions = new Map();
 

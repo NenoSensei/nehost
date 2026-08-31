@@ -37,8 +37,11 @@ try {
   $csrf = Invoke-RestMethod "$base/api/admin/session" -WebSession $session
   $headers = @{ "X-CSRF-Token" = $csrf.csrfToken }
   $contacts = Invoke-RestMethod "$base/api/admin/contacts?search=contact@example.com" -WebSession $session
+  $termsBeforePublish = Invoke-RestMethod "$base/api/admin/terms" -WebSession $session
+  $seededDraft = $termsBeforePublish.terms | Where-Object { $_.version -eq "Draft v2" }
+  if (-not $seededDraft -or $seededDraft.status -ne "draft" -or $seededDraft.body -notmatch "Philadelphia, Pennsylvania" -or $seededDraft.body -notmatch "repair@nenosensei.com" -or $seededDraft.body -notmatch '\$5 per day' -or $seededDraft.body -notmatch '30 days') { throw "Completed policy draft was not seeded correctly." }
+  if ($termsBeforePublish.published) { throw "A seeded policy was published unexpectedly." }
   $termsBody = "Published repair terms: I authorize inspection and listed services, understand data loss, hardware failure, pre-existing damage, backup limits, accessories, pricing, additional-work approval, payment, storage, liability limits, non-waivable rights, and electronic records."
-  Invoke-RestMethod "$base/api/admin/terms" -Method Post -WebSession $session -Headers $headers -ContentType "application/json" -Body (@{ body = $termsBody } | ConvertTo-Json) | Out-Null
 
   $invited = Invoke-RestMethod "$base/api/admin/customers" -Method Post -WebSession $session -Headers $headers -ContentType "application/json" -Body (@{ name = "Invited Client"; email = "invited@example.com"; phone = "555-0101" } | ConvertTo-Json)
   if (-not $invited.customer.pendingPassword) { throw "Admin-created customer was not marked pending password." }
@@ -48,6 +51,10 @@ try {
   Invoke-RestMethod "$base/api/account/setup-password" -Method Post -WebSession $invitedSession -ContentType "application/json" -Body (@{ token = ([uri]$invite.setupUrl).Query.Substring(7); password = "InvitedPassword123!" } | ConvertTo-Json) | Out-Null
 
   $adminWorkOrder = Invoke-RestMethod "$base/api/admin/customers/$($invited.customer.id)/work-orders" -Method Post -WebSession $session -Headers $headers -ContentType "application/json" -Body (@{ notes = "The client reports intermittent shutdowns."; repairNotes = "Inspect power delivery and thermal readings."; deviceCondition = "Desktop received powered off with visible dust around the intake."; accessories = "Power cable and wireless keyboard."; services = @(@{ name = "PC cleaning"; priceCents = 6900 }, @{ name = "Repair work"; priceCents = 12900 }, @{ name = "Custom diagnostic"; priceCents = 2500 }) } | ConvertTo-Json -Depth 5)
+  if (-not $adminWorkOrder.approvalBlocked) { throw "Customer approval was available before terms were published." }
+  Invoke-RestMethod "$base/api/admin/terms" -Method Post -WebSession $session -Headers $headers -ContentType "application/json" -Body (@{ body = $termsBody } | ConvertTo-Json) | Out-Null
+  $termsAfterPublish = Invoke-RestMethod "$base/api/admin/terms" -WebSession $session
+  if (-not ($termsAfterPublish.terms | Where-Object { $_.version -eq "Draft v2" -and $_.status -eq "draft" }) -or -not $termsAfterPublish.published -or $termsAfterPublish.published.body -ne $termsBody) { throw "Policy draft preservation or publishing failed." }
   $orderId = [uri]::EscapeDataString($adminWorkOrder.workOrder.id)
   $unsignedBlocked = $false
   try { Invoke-RestMethod "$base/api/admin/work-orders/$orderId" -Method Patch -WebSession $session -Headers $headers -ContentType "application/json" -Body (@{ status = "in-progress" } | ConvertTo-Json) | Out-Null } catch { if ($_.Exception.Response.StatusCode.value__ -ne 409) { throw }; $unsignedBlocked = $true }
