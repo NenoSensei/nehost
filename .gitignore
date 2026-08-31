@@ -10,3 +10,4 @@ npm-debug.log*
 .vite-dev.pid
 data/
 .tmp-repair-*/
+tmp-approval-test/

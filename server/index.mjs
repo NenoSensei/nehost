@@ -21,6 +21,26 @@ const adminEmail = process.env.ADMIN_EMAIL || process.env.SMTP_USER || "";
 const publicBaseUrl = (process.env.PUBLIC_BASE_URL || "https://repair.nenosensei.com").replace(/\/$/, "");
 const sessionTtlMs = 8 * 60 * 60 * 1000;
 const resetTokenTtlMs = 30 * 60 * 1000;
+const invitationTtlMs = 48 * 60 * 60 * 1000;
+const approvalTtlMs = 30 * 24 * 60 * 60 * 1000;
+const policyVersion = "Draft v1";
+const draftTerms = `Neno's IT repair — Service terms and device authorization (Draft v1)
+
+By signing this work order, I authorize Neno's IT repair to inspect my device and perform only the services listed on this order. I understand that inspection, cleaning, repair, updates, and data work can involve risks including data loss, hardware failure, loss of settings, and discovery of pre-existing damage.
+
+I have selected whether I want a data backup. I understand a backup is not guaranteed unless the backup service is specifically completed and confirmed. I am responsible for keeping my own copies of important data.
+
+I have reviewed the device condition and accessories recorded on this order and confirm that they are accurate to the best of my knowledge. Neno's IT repair is not responsible for pre-existing damage, normal wear, or failure of parts that were already defective.
+
+I approve the services and prices shown on this order. Additional services or price changes require my approval before work continues. Parts, tax, and separately approved work are not included in the quoted service total unless listed on the order.
+
+To the maximum extent allowed by law, I release Neno's IT repair from indirect or consequential loss related to the service. This does not waive rights that cannot legally be waived.
+
+I understand payment, storage, pickup, and unclaimed-device terms shown by Neno's IT repair. I consent to receive and retain this work order and related terms electronically, and I understand I may print or save a copy.
+
+By entering my full legal name and checking the required boxes, I agree to this order and these terms.
+
+This policy is a draft for business-owner review and qualified legal review before reliance.`;
 const sessions = new Map();
 const customerSessions = new Map();
 
@@ -52,7 +72,7 @@ database.run(`
     name TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE COLLATE NOCASE,
     phone TEXT NOT NULL DEFAULT '',
-    password_hash TEXT NOT NULL,
+    password_hash TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
@@ -84,7 +104,43 @@ database.run(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ticket_id INTEGER NOT NULL,
     service_name TEXT NOT NULL,
+    price_cents INTEGER,
     sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS customer_invites (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    customer_id INTEGER NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TEXT NOT NULL,
+    used_at TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS terms_documents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    version TEXT NOT NULL UNIQUE,
+    body TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft',
+    created_at TEXT NOT NULL,
+    published_at TEXT
+  );
+  CREATE TABLE IF NOT EXISTS work_order_consents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id INTEGER NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TEXT NOT NULL,
+    terms_version TEXT NOT NULL,
+    terms_snapshot TEXT NOT NULL,
+    services_snapshot_json TEXT NOT NULL,
+    total_cents INTEGER NOT NULL DEFAULT 0,
+    signature_name TEXT,
+    terms_accepted INTEGER NOT NULL DEFAULT 0,
+    electronic_records_accepted INTEGER NOT NULL DEFAULT 0,
+    accessories_acknowledged INTEGER NOT NULL DEFAULT 0,
+    accessories_left INTEGER,
+    backup_requested INTEGER,
+    signed_at TEXT,
+    revoked_at TEXT,
     created_at TEXT NOT NULL
   );
 `);
@@ -94,12 +150,17 @@ ensureColumn("tickets", "repair_notes", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("tickets", "device_condition", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("tickets", "accessories", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("password_resets", "staff_user_id", "INTEGER");
+ensureColumn("customers", "must_set_password", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("work_order_services", "price_cents", "INTEGER");
+database.run("INSERT OR IGNORE INTO terms_documents (version, body, status, created_at) VALUES (?, ?, 'draft', ?)", [policyVersion, draftTerms, new Date().toISOString()]);
 database.run("UPDATE tickets SET notes = assistance WHERE notes = '' AND assistance <> ''");
 database.run("CREATE INDEX IF NOT EXISTS idx_tickets_customer_id ON tickets(customer_id)");
 database.run("CREATE INDEX IF NOT EXISTS idx_tickets_updated_at ON tickets(updated_at)");
 database.run("CREATE INDEX IF NOT EXISTS idx_work_order_services_ticket_id ON work_order_services(ticket_id)");
 database.run("CREATE INDEX IF NOT EXISTS idx_customers_email ON customers(email COLLATE NOCASE)");
 database.run("CREATE INDEX IF NOT EXISTS idx_staff_username ON staff_users(username COLLATE NOCASE)");
+database.run("CREATE INDEX IF NOT EXISTS idx_customer_invites_customer_id ON customer_invites(customer_id)");
+database.run("CREATE INDEX IF NOT EXISTS idx_work_order_consents_ticket_id ON work_order_consents(ticket_id)");
 migrateInitialAdmin();
 persistDatabase();
 
@@ -120,10 +181,14 @@ const ticketLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 8, standardHe
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 8, standardHeaders: "draft-8", legacyHeaders: false, message: { error: "Too many login attempts. Please try again later." } });
 const accountLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: "draft-8", legacyHeaders: false, message: { error: "Too many account requests. Please try again later." } });
 const resetLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 5, standardHeaders: "draft-8", legacyHeaders: false, message: { error: "Too many reset requests. Please try again later." } });
-const validStatuses = new Set(["contact-needed", "in-progress", "completed"]);
+const validStatuses = new Set(["contact-needed", "ready-to-start", "in-progress", "completed"]);
 const validRoles = new Set(["owner", "admin"]);
+const serviceChoices = [
+  ["Diagnostic and written estimate", 4900], ["Standard computer repair", 12900], ["Gaming PC repair", 16900], ["PC tune-up", 8900], ["PC cleaning", 6900], ["Malware or virus removal", 12900], ["Severe malware removal", 17900], ["Windows repair", 13900], ["Windows reinstall with data preservation", 17900], ["New computer setup", 12900], ["Data transfer", 14900], ["SSD or hard-drive installation", 7900], ["SSD installation with data migration", 14900], ["Custom PC assembly", 19900], ["Remote support", 7900], ["Onsite support", 11900], ["PC training and lessons", 6500],
+];
 
 app.get("/health", (_req, res) => res.type("text").send("ok\n"));
+app.get("/api/service-choices", (_req, res) => res.json({ services: serviceChoices.map(([name, defaultPriceCents]) => ({ name, defaultPriceCents })) }));
 
 app.post("/api/account/register", accountLimiter, async (req, res) => {
   const name = cleanText(req.body.name, 100); const email = cleanText(req.body.email, 254).toLowerCase();
@@ -139,12 +204,37 @@ app.post("/api/account/register", accountLimiter, async (req, res) => {
 app.post("/api/account/login", loginLimiter, async (req, res) => {
   const email = cleanText(req.body.email, 254).toLowerCase(); const password = typeof req.body.password === "string" ? req.body.password : "";
   const customer = getCustomerByEmail(email);
+  if (customer?.must_set_password) return res.status(403).json({ error: "Please use the password setup link sent to your email before signing in." });
   if (!customer || !(await bcrypt.compare(password, customer.password_hash))) return res.status(401).json({ error: "The email or password is not valid." });
   setCustomerSession(res, customer); return res.json({ ok: true, customer: publicCustomer(customer) });
 });
 app.get("/api/account/session", requireCustomer, (req, res) => res.json({ ok: true, customer: publicCustomer(req.customer) }));
 app.post("/api/account/logout", requireCustomer, (req, res) => { customerSessions.delete(req.customerSession.tokenHash); res.clearCookie("neno_customer", { httpOnly: true, sameSite: "lax", path: "/" }); return res.json({ ok: true }); });
 app.get("/api/account/work-orders", requireCustomer, (req, res) => res.json({ workOrders: listWorkOrdersForCustomer(req.customer.id).map(customerTicket) }));
+app.get("/api/account/setup", accountLimiter, (req, res) => {
+  const invite = getInvite(hashToken(cleanText(req.query.token, 200)));
+  if (!invite || invite.used_at || new Date(invite.expires_at) <= new Date()) return res.status(400).json({ error: "This password setup link is invalid or has expired." });
+  return res.json({ ok: true, customer: { name: invite.name, email: invite.email } });
+});
+app.post("/api/account/setup-password", accountLimiter, async (req, res) => {
+  const token = cleanText(req.body.token, 200); const password = typeof req.body.password === "string" ? req.body.password : "";
+  if (!token || Array.from(password).length < 12) return res.status(400).json({ error: "Use a password with at least 12 characters." });
+  const invite = getInvite(hashToken(token));
+  if (!invite || invite.used_at || new Date(invite.expires_at) <= new Date()) return res.status(400).json({ error: "This password setup link is invalid or has expired." });
+  const now = new Date().toISOString(); const passwordHash = await bcrypt.hash(password, 12);
+  database.run("UPDATE customers SET password_hash = ?, must_set_password = 0, updated_at = ? WHERE id = ?", [passwordHash, now, invite.customer_id]);
+  database.run("UPDATE customer_invites SET used_at = ? WHERE id = ?", [now, invite.id]); persistDatabase();
+  const customer = getCustomerById(invite.customer_id); setCustomerSession(res, customer);
+  return res.json({ ok: true, customer: publicCustomer(customer) });
+});
+app.post("/api/account/work-orders/:id/consent-link", requireCustomer, async (req, res) => {
+  const ticket = getTicket(req.params.id);
+  if (!ticket || !customerOwnsTicket(req.customer, ticket)) return res.status(404).json({ error: "Work order not found." });
+  const request = await createConsentRequest(ticket, false); if (!request) return res.status(400).json({ error: "A published terms policy is required before approval can be requested." });
+  return res.json({ ok: true, consentUrl: request.url });
+});
+app.get("/api/account/consent", accountLimiter, (req, res) => getConsentForReview(req, res));
+app.post("/api/account/consent", accountLimiter, async (req, res) => submitConsent(req, res));
 
 app.post("/api/tickets", ticketLimiter, async (req, res) => {
   const name = cleanText(req.body.name, 100); const email = cleanText(req.body.email, 254).toLowerCase();
@@ -153,8 +243,8 @@ app.post("/api/tickets", ticketLimiter, async (req, res) => {
   if (!name || !isEmail(email) || !phone || assistance.length < 10) return res.status(400).json({ error: "Please complete each field with valid details." });
   const customer = getCustomerByEmail(email); const customerId = req.customer?.id || customer?.id || null; const now = new Date().toISOString(); const publicId = createWorkOrderId();
   database.run(`INSERT INTO tickets (public_id, customer_id, name, email, phone, assistance, notes, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'contact-needed', ?, ?)`, [publicId, customerId, name, email, phone, assistance, assistance, now, now]);
-  persistDatabase(); const ticket = getTicket(publicId); const emailSent = await sendStatusEmail(ticket); const notificationSent = await sendNewTicketNotification(ticket);
-  return res.status(201).json({ ok: true, emailSent, notificationSent, ticket: customerTicket(ticket) });
+  persistDatabase(); const ticket = getTicket(publicId); const approval = await createConsentRequest(ticket, true); const notificationSent = await sendNewTicketNotification(ticket);
+  return res.status(201).json({ ok: true, emailSent: Boolean(approval?.emailSent), approvalRequired: true, notificationSent, ticket: customerTicket(ticket) });
 });
 
 app.post("/api/admin/login", loginLimiter, async (req, res) => {
@@ -195,24 +285,41 @@ app.post("/api/admin/customers/:id/work-orders", requireAdmin, requireCsrf, asyn
   database.run(`INSERT INTO tickets (public_id, customer_id, name, email, phone, assistance, notes, repair_notes, device_condition, accessories, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'contact-needed', ?, ?)`, [publicId, customer.id, customer.name, customer.email, customer.phone, details.notes, details.notes, details.repairNotes, details.deviceCondition, details.accessories, now, now]);
   const ticketId = database.exec("SELECT id FROM tickets WHERE public_id = ?", [publicId])[0].values[0][0];
   replaceWorkOrderServices(ticketId, details.services, now);
-  persistDatabase(); const ticket = getTicket(publicId); const emailSent = await sendStatusEmail(ticket); const notificationSent = await sendNewTicketNotification(ticket);
-  return res.status(201).json({ ok: true, emailSent, notificationSent, workOrder: adminTicket(ticket) });
+  persistDatabase(); const ticket = getTicket(publicId); const approval = await createConsentRequest(ticket, true); const notificationSent = await sendNewTicketNotification(ticket);
+  return res.status(201).json({ ok: true, emailSent: Boolean(approval?.emailSent), approvalEmailSent: Boolean(approval?.emailSent), notificationSent, approvalBlocked: !approval, workOrder: adminTicket(ticket) });
 });
 app.patch("/api/admin/work-orders/:id", requireAdmin, requireCsrf, updateWorkOrder);
 app.patch("/api/admin/tickets/:id", requireAdmin, requireCsrf, updateWorkOrder);
+app.post("/api/admin/work-orders/:id/consent", requireAdmin, requireCsrf, async (req, res) => {
+  const ticket = getTicket(req.params.id); if (!ticket) return res.status(404).json({ error: "Work order not found." });
+  const approval = await createConsentRequest(ticket, true); if (!approval) return res.status(400).json({ error: "Publish a terms policy before requesting customer approval." });
+  return res.json({ ok: true, consentUrl: approval.url, emailSent: Boolean(approval.emailSent), workOrder: adminTicket(getTicket(ticket.public_id)) });
+});
 app.delete("/api/admin/work-orders/:id", requireAdmin, requireCsrf, (req, res) => { const ticket = getTicket(req.params.id); if (!ticket) return res.status(404).json({ error: "Work order not found." }); database.run("DELETE FROM work_order_services WHERE ticket_id = ?", [ticket.id]); database.run("DELETE FROM tickets WHERE id = ?", [ticket.id]); persistDatabase(); return res.json({ ok: true, id: req.params.id }); });
 
 app.get("/api/admin/customers", requireAdmin, (req, res) => res.json({ customers: listCustomers(cleanText(req.query.search, 120)).map(publicCustomer) }));
 app.post("/api/admin/customers", requireAdmin, requireCsrf, async (req, res) => {
-  const name = cleanText(req.body.name, 100); const email = cleanText(req.body.email, 254).toLowerCase(); const phone = cleanText(req.body.phone, 40); const password = typeof req.body.password === "string" ? req.body.password : "";
-  if (!name || !isEmail(email) || Array.from(password).length < 12) return res.status(400).json({ error: "Enter a name, valid email, and password with at least 12 characters." });
+  const name = cleanText(req.body.name, 100); const email = cleanText(req.body.email, 254).toLowerCase(); const phone = cleanText(req.body.phone, 40);
+  if (!name || !isEmail(email)) return res.status(400).json({ error: "Enter a name and valid email." });
   if (getCustomerByEmail(email)) return res.status(409).json({ error: "That email is already in use." });
-  const now = new Date().toISOString(); const passwordHash = await bcrypt.hash(password, 12); database.run("INSERT INTO customers (name, email, phone, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)", [name, email, phone, passwordHash, now, now]); persistDatabase(); return res.status(201).json({ ok: true, customer: publicCustomer(getCustomerByEmail(email)) });
+  const now = new Date().toISOString(); database.run("INSERT INTO customers (name, email, phone, password_hash, must_set_password, created_at, updated_at) VALUES (?, ?, ?, '', 1, ?, ?)", [name, email, phone, now, now]); const customer = getCustomerByEmail(email); const invitation = await createCustomerInvitation(customer); persistDatabase(); return res.status(201).json({ ok: true, inviteSent: Boolean(invitation.emailSent), customer: publicCustomer(customer) });
+});
+app.post("/api/admin/customers/:id/invite", requireAdmin, requireCsrf, async (req, res) => {
+  const customer = getCustomerById(req.params.id); if (!customer) return res.status(404).json({ error: "Customer account not found." });
+  const invitation = await createCustomerInvitation(customer); return res.json({ ok: true, inviteSent: Boolean(invitation.emailSent), setupUrl: invitation.url, customer: publicCustomer(customer) });
 });
 app.patch("/api/admin/customers/:id", requireAdmin, requireCsrf, async (req, res) => {
   const customer = getCustomerById(req.params.id); if (!customer) return res.status(404).json({ error: "Customer account not found." }); const name = cleanText(req.body.name, 100) || customer.name; const email = cleanText(req.body.email, 254).toLowerCase() || customer.email; const phone = cleanText(req.body.phone, 40); const password = typeof req.body.password === "string" ? req.body.password : "";
   if (!isEmail(email) || (password && Array.from(password).length < 12)) return res.status(400).json({ error: "Use a valid email and, if changing the password, at least 12 characters." }); const passwordHash = password ? await bcrypt.hash(password, 12) : customer.password_hash;
   try { database.run("UPDATE customers SET name = ?, email = ?, phone = ?, password_hash = ?, updated_at = ? WHERE id = ?", [name, email, phone, passwordHash, new Date().toISOString(), customer.id]); } catch { return res.status(409).json({ error: "That email is already in use." }); } persistDatabase(); return res.json({ ok: true, customer: publicCustomer(getCustomerById(customer.id)) });
+});
+
+app.get("/api/admin/terms", requireAdmin, (req, res) => res.json({ terms: listTerms(), published: getPublishedTerms() }));
+app.post("/api/admin/terms", requireAdmin, requireCsrf, (req, res) => {
+  if (req.staff.role !== "owner") return res.status(403).json({ error: "Owner access is required to publish terms." });
+  const body = cleanText(req.body.body, 20000); if (body.length < 100) return res.status(400).json({ error: "Terms must contain at least 100 characters." });
+  const now = new Date().toISOString(); const version = `v${(listTerms().length || 0) + 1}`;
+  database.run("INSERT INTO terms_documents (version, body, status, created_at, published_at) VALUES (?, ?, 'published', ?, ?)", [version, body, now, now]); database.run("UPDATE terms_documents SET status = 'archived' WHERE status = 'published' AND version <> ?", [version]); persistDatabase(); return res.status(201).json({ ok: true, terms: getPublishedTerms() });
 });
 
 app.get("/api/admin/staff", requireAdmin, (req, res) => { if (req.staff.role !== "owner") return res.status(403).json({ error: "Owner access is required for staff accounts." }); return res.json({ staff: listStaff().map(publicStaff) }); });
@@ -244,12 +351,12 @@ function listWorkOrdersForCustomer(customerId) { return rowsFromQuery("SELECT * 
 function rowFromQuery(query, params = []) { const result = database.exec(query, params); return result.length ? rowToObject(result[0].columns, result[0].values[0]) : null; }
 function rowsFromQuery(query, params = []) { const result = database.exec(query, params); return result.length ? result[0].values.map((row) => rowToObject(result[0].columns, row)) : []; }
 function rowToObject(columns, row) { return columns.reduce((object, column, index) => ({ ...object, [column]: row[index] }), {}); }
-function customerTicket(ticket) { const notes = ticket.notes || ticket.assistance || ""; return { id: ticket.public_id, name: ticket.name, email: ticket.email, phone: ticket.phone, assistance: notes, notes, deviceCondition: ticket.device_condition || "", accessories: ticket.accessories || "", services: getServicesForTicket(ticket.id), status: ticket.status, createdAt: ticket.created_at, updatedAt: ticket.updated_at }; }
-function adminTicket(ticket) { return { ...customerTicket(ticket), repairNotes: ticket.repair_notes || "" }; }
+function customerTicket(ticket) { const notes = ticket.notes || ticket.assistance || ""; const consent = getCurrentConsent(ticket.id); return { id: ticket.public_id, name: ticket.name, email: ticket.email, phone: ticket.phone, assistance: notes, notes, deviceCondition: ticket.device_condition || "", accessories: ticket.accessories || "", services: getServicesForTicket(ticket.id), totalCents: getTotalCents(ticket.id), status: ticket.status, consent: safeConsent(consent), consentRequired: !consent?.signed_at, createdAt: ticket.created_at, updatedAt: ticket.updated_at }; }
+function adminTicket(ticket) { const consent = getCurrentConsent(ticket.id); return { ...customerTicket(ticket), repairNotes: ticket.repair_notes || "", adminConsent: consent ? consentDetails(consent) : null }; }
 function getCustomerByEmail(email) { return rowFromQuery("SELECT * FROM customers WHERE email = ? COLLATE NOCASE", [email]); }
 function getCustomerById(id) { return rowFromQuery("SELECT * FROM customers WHERE id = ?", [id]); }
 function listCustomers(search = "") { const where = search ? "WHERE c.name LIKE ? COLLATE NOCASE OR c.email LIKE ? COLLATE NOCASE OR c.phone LIKE ? COLLATE NOCASE" : ""; const term = `%${search}%`; return rowsFromQuery(`SELECT c.*, COUNT(t.id) AS work_order_count FROM customers c LEFT JOIN tickets t ON t.customer_id = c.id ${where} GROUP BY c.id ORDER BY c.name COLLATE NOCASE`, search ? [term, term, term] : []); }
-function publicCustomer(customer) { return { id: customer.id, name: customer.name, email: customer.email, phone: customer.phone, workOrderCount: Number(customer.work_order_count || 0), createdAt: customer.created_at }; }
+function publicCustomer(customer) { return { id: customer.id, name: customer.name, email: customer.email, phone: customer.phone, pendingPassword: Boolean(customer.must_set_password), workOrderCount: Number(customer.work_order_count || 0), createdAt: customer.created_at }; }
 function getStaffById(id) { return rowFromQuery("SELECT * FROM staff_users WHERE id = ?", [id]); }
 function getStaffByUsername(username) { return rowFromQuery("SELECT * FROM staff_users WHERE username = ? COLLATE NOCASE", [username]); }
 function getStaffByEmail(email) { return rowFromQuery("SELECT * FROM staff_users WHERE email = ? COLLATE NOCASE", [email]); }
@@ -257,10 +364,49 @@ function getStaffByIdentifier(identifier) { return getStaffByUsername(identifier
 function listStaff() { return rowsFromQuery("SELECT * FROM staff_users ORDER BY active DESC, name COLLATE NOCASE"); }
 function publicStaff(user) { return { id: user.id, username: user.username, name: user.name, email: user.email, role: user.role, active: Boolean(user.active), createdAt: user.created_at, updatedAt: user.updated_at }; }
 function workOrderDetails(input = {}, existing = null) { const notes = input.notes === undefined ? (existing?.notes || existing?.assistance || "") : cleanText(input.notes, 4000); const repairNotes = input.repairNotes === undefined ? (existing?.repair_notes || "") : cleanText(input.repairNotes, 8000); const deviceCondition = input.deviceCondition === undefined ? (existing?.device_condition || "") : cleanText(input.deviceCondition, 3000); const accessories = input.accessories === undefined ? (existing?.accessories || "") : cleanText(input.accessories, 2000); const services = Array.isArray(input.services) ? normalizeServices(input.services) : existing ? getServicesForTicket(existing.id) : []; return { notes, repairNotes, deviceCondition, accessories, services }; }
-function normalizeServices(services) { return [...new Set(services.filter((service) => typeof service === "string").map((service) => cleanText(service, 120)).filter(Boolean))].slice(0, 20); }
-function getServicesForTicket(ticketId) { return rowsFromQuery("SELECT service_name FROM work_order_services WHERE ticket_id = ? ORDER BY sort_order, id", [ticketId]).map((row) => row.service_name); }
-function replaceWorkOrderServices(ticketId, services, createdAt) { database.run("DELETE FROM work_order_services WHERE ticket_id = ?", [ticketId]); services.forEach((service, index) => database.run("INSERT INTO work_order_services (ticket_id, service_name, sort_order, created_at) VALUES (?, ?, ?, ?)", [ticketId, service, index, createdAt])); }
-async function updateWorkOrder(req, res) { const ticket = getTicket(req.params.id); if (!ticket) return res.status(404).json({ error: "Work order not found." }); const status = req.body.status === undefined ? ticket.status : cleanText(req.body.status, 30); if (!validStatuses.has(status)) return res.status(400).json({ error: "That work order status is not available." }); const details = workOrderDetails(req.body, ticket); if (req.body.notes !== undefined && !details.notes) return res.status(400).json({ error: "Notes cannot be empty." }); if (req.body.deviceCondition !== undefined && !details.deviceCondition) return res.status(400).json({ error: "Device condition cannot be empty." }); const updatedAt = new Date().toISOString(); database.run("UPDATE tickets SET assistance = ?, notes = ?, repair_notes = ?, device_condition = ?, accessories = ?, status = ?, updated_at = ? WHERE public_id = ?", [details.notes, details.notes, details.repairNotes, details.deviceCondition, details.accessories, status, updatedAt, ticket.public_id]); if (Array.isArray(req.body.services)) replaceWorkOrderServices(ticket.id, details.services, updatedAt); persistDatabase(); const updatedTicket = getTicket(ticket.public_id); const emailSent = ticket.status === status ? true : await sendStatusEmail(updatedTicket); return res.json({ ok: true, emailSent, workOrder: adminTicket(updatedTicket), ticket: adminTicket(updatedTicket) }); }
+function normalizeServices(services) { return services.map((service) => { if (typeof service === "string") return { name: cleanText(service, 120), priceCents: null }; if (!service || typeof service !== "object") return null; const priceCents = service.priceCents !== undefined && service.priceCents !== null && service.priceCents !== "" ? Number(service.priceCents) : parsePriceCents(service.price); return { name: cleanText(service.name, 120), priceCents: Number.isInteger(priceCents) && priceCents >= 0 && priceCents <= 100000000 ? priceCents : null }; }).filter((service) => service?.name).slice(0, 20); }
+function parsePriceCents(value) { if (value === null || value === undefined || value === "") return null; const number = typeof value === "number" ? value : Number(String(value).replace(/[$,]/g, "")); if (!Number.isFinite(number) || number < 0 || number > 1000000) return null; return Math.round(number * 100); }
+function getServicesForTicket(ticketId) { return rowsFromQuery("SELECT service_name, price_cents AS priceCents FROM work_order_services WHERE ticket_id = ? ORDER BY sort_order, id", [ticketId]).map((row) => ({ name: row.service_name, priceCents: row.priceCents === null ? null : Number(row.priceCents) })); }
+function getTotalCents(ticketId) { return getServicesForTicket(ticketId).reduce((total, service) => total + (Number.isInteger(service.priceCents) ? service.priceCents : 0), 0); }
+function replaceWorkOrderServices(ticketId, services, createdAt) { database.run("DELETE FROM work_order_services WHERE ticket_id = ?", [ticketId]); services.forEach((service, index) => database.run("INSERT INTO work_order_services (ticket_id, service_name, price_cents, sort_order, created_at) VALUES (?, ?, ?, ?, ?)", [ticketId, service.name, service.priceCents, index, createdAt])); }
+async function updateWorkOrder(req, res) {
+  const ticket = getTicket(req.params.id);
+  if (!ticket) return res.status(404).json({ error: "Work order not found." });
+  const status = req.body.status === undefined ? ticket.status : cleanText(req.body.status, 30);
+  if (!validStatuses.has(status)) return res.status(400).json({ error: "That work order status is not available." });
+  if (status === "ready-to-start") return res.status(400).json({ error: "Ready to start is set automatically after the customer signs." });
+  const details = workOrderDetails(req.body, ticket);
+  if (req.body.notes !== undefined && !details.notes) return res.status(400).json({ error: "Notes cannot be empty." });
+  if (req.body.deviceCondition !== undefined && !details.deviceCondition) return res.status(400).json({ error: "Device condition cannot be empty." });
+  if (status === "in-progress" && !getCurrentConsent(ticket.id)?.signed_at) return res.status(409).json({ error: "Customer approval is required before work can begin." });
+  const oldServices = getServicesForTicket(ticket.id);
+  const servicesChanged = Array.isArray(req.body.services) && JSON.stringify(oldServices) !== JSON.stringify(details.services);
+  const customerFacingChanged = (req.body.notes !== undefined && details.notes !== (ticket.notes || ticket.assistance || "")) || (req.body.deviceCondition !== undefined && details.deviceCondition !== (ticket.device_condition || "")) || (req.body.accessories !== undefined && details.accessories !== (ticket.accessories || "")) || servicesChanged;
+  const previousConsent = getCurrentConsent(ticket.id); const updatedAt = new Date().toISOString();
+  database.run("UPDATE tickets SET assistance = ?, notes = ?, repair_notes = ?, device_condition = ?, accessories = ?, status = ?, updated_at = ? WHERE public_id = ?", [details.notes, details.notes, details.repairNotes, details.deviceCondition, details.accessories, status, updatedAt, ticket.public_id]);
+  if (Array.isArray(req.body.services)) replaceWorkOrderServices(ticket.id, details.services, updatedAt);
+  if (customerFacingChanged && previousConsent?.signed_at) { revokeConsent(previousConsent.id); database.run("UPDATE tickets SET status = 'contact-needed', updated_at = ? WHERE public_id = ?", [updatedAt, ticket.public_id]); }
+  persistDatabase(); const updatedTicket = getTicket(ticket.public_id); let approval = null;
+  if (customerFacingChanged && previousConsent?.signed_at) approval = await createConsentRequest(updatedTicket, true, true);
+  const emailSent = approval ? Boolean(approval.emailSent) : ticket.status === status ? true : await sendStatusEmail(updatedTicket);
+  return res.json({ ok: true, emailSent, approvalRevoked: Boolean(approval), workOrder: adminTicket(getTicket(ticket.public_id)), ticket: adminTicket(getTicket(ticket.public_id)) });
+}
+function getInvite(tokenHash) { return rowFromQuery("SELECT i.*, c.name, c.email FROM customer_invites i JOIN customers c ON c.id = i.customer_id WHERE i.token_hash = ?", [tokenHash]); }
+async function createCustomerInvitation(customer) { database.run("UPDATE customer_invites SET used_at = COALESCE(used_at, ?) WHERE customer_id = ? AND used_at IS NULL", [new Date().toISOString(), customer.id]); const rawToken = crypto.randomBytes(32).toString("base64url"); const now = new Date(); const url = `${publicBaseUrl}/account/setup?token=${encodeURIComponent(rawToken)}`; database.run("INSERT INTO customer_invites (customer_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?)", [customer.id, hashToken(rawToken), new Date(now.getTime() + invitationTtlMs).toISOString(), now.toISOString()]); const emailSent = await sendCustomerInviteEmail(rawToken, customer); persistDatabase(); return { url, emailSent }; }
+function listTerms() { return rowsFromQuery("SELECT id, version, body, status, created_at AS createdAt, published_at AS publishedAt FROM terms_documents ORDER BY id DESC"); }
+function getPublishedTerms() { return rowFromQuery("SELECT id, version, body, status, created_at, published_at FROM terms_documents WHERE status = 'published' ORDER BY id DESC LIMIT 1"); }
+function customerOwnsTicket(customer, ticket) { return ticket.customer_id === customer.id || (ticket.customer_id === null && ticket.email.toLowerCase() === customer.email.toLowerCase()); }
+function getCurrentConsent(ticketId) { return rowFromQuery("SELECT * FROM work_order_consents WHERE ticket_id = ? AND revoked_at IS NULL ORDER BY id DESC LIMIT 1", [ticketId]); }
+function safeConsent(consent) { if (!consent) return { status: "pending" }; return { status: consent.signed_at ? "signed" : "pending", signatureName: consent.signature_name || null, signedAt: consent.signed_at || null, termsVersion: consent.signed_at ? consent.terms_version : null, accessoriesLeft: consent.signed_at ? Boolean(consent.accessories_left) : null, backupRequested: consent.signed_at ? Boolean(consent.backup_requested) : null }; }
+function consentDetails(consent) { return { ...safeConsent(consent), id: consent.id, expiresAt: consent.expires_at, termsSnapshot: consent.terms_snapshot, servicesSnapshot: JSON.parse(consent.services_snapshot_json || "[]"), totalCents: Number(consent.total_cents), termsAccepted: Boolean(consent.terms_accepted), electronicRecordsAccepted: Boolean(consent.electronic_records_accepted), accessoriesAcknowledged: Boolean(consent.accessories_acknowledged), revokedAt: consent.revoked_at || null }; }
+function approvalServices(ticket) { return getServicesForTicket(ticket.id); }
+async function createConsentRequest(ticket, sendEmail = true, updated = false) { const terms = getPublishedTerms(); const services = approvalServices(ticket); if (!terms || services.some((service) => !Number.isInteger(service.priceCents) || service.priceCents < 0)) return null; database.run("UPDATE work_order_consents SET revoked_at = COALESCE(revoked_at, ?) WHERE ticket_id = ? AND revoked_at IS NULL", [new Date().toISOString(), ticket.id]); const rawToken = crypto.randomBytes(32).toString("base64url"); const now = new Date(); database.run("INSERT INTO work_order_consents (ticket_id, token_hash, expires_at, terms_version, terms_snapshot, services_snapshot_json, total_cents, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [ticket.id, hashToken(rawToken), new Date(now.getTime() + approvalTtlMs).toISOString(), terms.version, terms.body, JSON.stringify(services), services.reduce((sum, service) => sum + service.priceCents, 0), now.toISOString()]); const consent = getCurrentConsent(ticket.id); const url = `${publicBaseUrl}/orders/consent?token=${encodeURIComponent(rawToken)}`; const emailSent = sendEmail ? await sendWorkOrderApprovalEmail(ticket, consent, terms, updated, url) : false; persistDatabase(); return { url, emailSent, consent };
+}
+function getConsentByToken(tokenHash) { return rowFromQuery("SELECT c.*, t.public_id, t.name, t.email, t.phone, t.notes, t.assistance, t.device_condition, t.accessories, t.status FROM work_order_consents c JOIN tickets t ON t.id = c.ticket_id WHERE c.token_hash = ?", [tokenHash]); }
+function consentReview(consent) { return { workOrder: { id: consent.public_id, name: consent.name, email: consent.email, notes: consent.notes || consent.assistance || "", deviceCondition: consent.device_condition || "", accessories: consent.accessories || "", services: JSON.parse(consent.services_snapshot_json || "[]"), totalCents: Number(consent.total_cents), status: consent.status }, terms: { version: consent.terms_version, body: consent.terms_snapshot }, expiresAt: consent.expires_at, signed: Boolean(consent.signed_at), signatureName: consent.signature_name || null, signedAt: consent.signed_at || null }; }
+function getConsentForReview(req, res) { const token = cleanText(req.query.token, 200); const consent = getConsentByToken(hashToken(token)); if (!consent || consent.revoked_at || consent.signed_at || new Date(consent.expires_at) <= new Date()) return res.status(400).json({ error: "This approval link is invalid, expired, or already used." }); return res.json({ ok: true, consent: consentReview(consent) }); }
+async function submitConsent(req, res) { const token = cleanText(req.body.token, 200); const consent = getConsentByToken(hashToken(token)); if (!consent || consent.revoked_at || consent.signed_at || new Date(consent.expires_at) <= new Date()) return res.status(400).json({ error: "This approval link is invalid, expired, or already used." }); const signatureName = cleanText(req.body.signatureName, 160); const termsAccepted = req.body.termsAccepted === true; const electronicRecordsAccepted = req.body.electronicRecordsAccepted === true; const accessoriesAcknowledged = req.body.accessoriesAcknowledged === true; const accessoriesLeft = typeof req.body.accessoriesLeft === "boolean" ? req.body.accessoriesLeft : null; const backupRequested = typeof req.body.backupRequested === "boolean" ? req.body.backupRequested : null; if (signatureName.length < 2 || !termsAccepted || !electronicRecordsAccepted || !accessoriesAcknowledged || accessoriesLeft === null || backupRequested === null) return res.status(400).json({ error: "Enter your full legal name and complete each required acknowledgement." }); const now = new Date().toISOString(); database.run("UPDATE work_order_consents SET signature_name = ?, terms_accepted = 1, electronic_records_accepted = 1, accessories_acknowledged = 1, accessories_left = ?, backup_requested = ?, signed_at = ? WHERE id = ?", [signatureName, accessoriesLeft ? 1 : 0, backupRequested ? 1 : 0, now, consent.id]); database.run("UPDATE tickets SET status = 'ready-to-start', updated_at = ? WHERE id = ?", [now, consent.ticket_id]); persistDatabase(); const signedConsent = getCurrentConsent(consent.ticket_id); const ticket = getTicket(consent.public_id); const customerEmailSent = await sendConsentConfirmationEmail(ticket, signedConsent); const ownerEmailSent = await sendConsentNotificationEmail(ticket, signedConsent); return res.json({ ok: true, customerEmailSent, ownerEmailSent, workOrder: customerTicket(ticket) }); }
+function revokeConsent(consentId) { database.run("UPDATE work_order_consents SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL", [new Date().toISOString(), consentId]); }
 function persistDatabase() { const temporaryPath = `${databasePath}.tmp`; fs.writeFileSync(temporaryPath, Buffer.from(database.export())); fs.renameSync(temporaryPath, databasePath); }
 function hashToken(token) { return crypto.createHash("sha256").update(token).digest("hex"); }
 function setAdminSession(res, user) { const rawToken = crypto.randomBytes(32).toString("base64url"); sessions.set(hashToken(rawToken), { userId: user.id, expiresAt: Date.now() + sessionTtlMs }); res.cookie("neno_admin", rawToken, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict", maxAge: sessionTtlMs, path: "/" }); }
@@ -269,8 +415,13 @@ function requireAdmin(req, res, next) { const rawToken = parseCookie(req.headers
 function requireCustomer(req, res, next) { const rawToken = parseCookie(req.headers.cookie || "").neno_customer; const tokenHash = rawToken ? hashToken(rawToken) : ""; const session = customerSessions.get(tokenHash); const customer = session ? rowFromQuery("SELECT * FROM customers WHERE id = ?", [session.customerId]) : null; if (!session || !customer || session.expiresAt < Date.now()) { customerSessions.delete(tokenHash); return res.status(401).json({ error: "Customer login required." }); } req.customerSession = { ...session, tokenHash, expiresAt: Date.now() + sessionTtlMs }; req.customer = customer; customerSessions.set(tokenHash, req.customerSession); return next(); }
 function requireCsrf(req, res, next) { const token = req.headers["x-csrf-token"]; if (!token || token !== req.session.csrfToken) return res.status(403).json({ error: "This request could not be verified." }); return next(); }
 function parseCookie(header) { return header.split(";").reduce((cookies, part) => { const index = part.indexOf("="); if (index > -1) cookies[part.slice(0, index).trim()] = decodeURIComponent(part.slice(index + 1)); return cookies; }, {}); }
-async function sendStatusEmail(ticket) { if (!ticket) return false; const transport = createTransport(); if (!transport) return false; const statusText = { "contact-needed": "Contact needed", "in-progress": "In progress", completed: "Completed" }[ticket.status]; try { await transport.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: ticket.email, replyTo: process.env.REPAIR_REPLY_TO || process.env.SMTP_FROM || process.env.SMTP_USER, subject: `Neno's IT repair — ${ticket.public_id} is ${statusText}`, text: [`Hi ${ticket.name},`, "", `Your Neno's IT repair work order ${ticket.public_id} is now: ${statusText}.`, "", statusMessage(ticket.status), "", "We will contact you if we need more information.", "", "Neno's IT repair"].join("\n") }); return true; } catch (error) { console.error(`Email failed for ${ticket.public_id}:`, error.message); return false; } }
+async function sendStatusEmail(ticket) { if (!ticket) return false; const transport = createTransport(); if (!transport) return false; const statusText = { "contact-needed": "Contact needed", "ready-to-start": "Ready to start", "in-progress": "In progress", completed: "Completed" }[ticket.status]; try { await transport.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: ticket.email, replyTo: process.env.REPAIR_REPLY_TO || process.env.SMTP_FROM || process.env.SMTP_USER, subject: `Neno's IT repair — ${ticket.public_id} is ${statusText}`, text: [`Hi ${ticket.name},`, "", `Your Neno's IT repair work order ${ticket.public_id} is now: ${statusText}.`, "", statusMessage(ticket.status), "", "We will contact you if we need more information.", "", "Neno's IT repair"].join("\n") }); return true; } catch (error) { console.error(`Email failed for ${ticket.public_id}:`, error.message); return false; } }
+async function sendCustomerInviteEmail(rawToken, customer) { const transport = createTransport(); if (!transport || !customer?.email) return false; const setupUrl = `${publicBaseUrl}/account/setup?token=${encodeURIComponent(rawToken)}`; try { await transport.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: customer.email, replyTo: process.env.REPAIR_REPLY_TO || process.env.SMTP_FROM || process.env.SMTP_USER, subject: "Neno's IT repair — finish setting up your account", text: [`Hi ${customer.name},`, "", "An account has been created for you at Neno's IT repair.", `Set your password here: ${setupUrl}`, "", "This one-time link expires in 48 hours. You must set a password before signing in.", "If you were not expecting this message, you can ignore it.", "", "Neno's IT repair"].join("\n") }); return true; } catch (error) { console.error(`Customer invitation failed for ${customer.email}:`, error.message); return false; } }
+async function sendWorkOrderApprovalEmail(ticket, consent, terms, updated, approvalUrl) { const transport = createTransport(); if (!transport || !ticket?.email) return false; const serviceLines = JSON.parse(consent.services_snapshot_json || "[]").map((service) => `- ${service.name}: ${formatMoney(service.priceCents)}`).join("\n") || "- No services listed"; try { await transport.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: ticket.email, replyTo: process.env.REPAIR_REPLY_TO || process.env.SMTP_FROM || process.env.SMTP_USER, subject: `Neno's IT repair — ${updated ? "updated approval needed" : "review work order"} ${ticket.public_id}`, text: [`Hi ${ticket.name},`, "", `${updated ? "The work order has changed and needs your approval again." : "Your work order is ready for your review."}`, `Work order: ${ticket.public_id}`, "", "Notes:", ticket.notes || ticket.assistance || "", "", "Services and prices:", serviceLines, `Quoted service total: ${formatMoney(consent.total_cents)}`, "", "Device condition:", ticket.device_condition || "Not recorded", "", "Accessories recorded by the shop:", ticket.accessories || "None recorded", "", "Repairs will not begin until you complete the approval.", `Review and sign: ${approvalUrl}`, "", `Terms and liability policy (${terms.version}):`, terms.body, "", "Neno's IT repair"].join("\n") }); return true; } catch (error) { console.error(`Approval email failed for ${ticket.public_id}:`, error.message); return false; } }
+async function sendConsentConfirmationEmail(ticket, consent) { const transport = createTransport(); if (!transport) return false; try { await transport.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: ticket.email, replyTo: process.env.REPAIR_REPLY_TO || process.env.SMTP_FROM || process.env.SMTP_USER, subject: `Neno's IT repair — approval received for ${ticket.public_id}`, text: [`Hi ${ticket.name},`, "", `Your approval for work order ${ticket.public_id} was received.`, `Signed by: ${consent.signature_name}`, `Signed at: ${consent.signed_at}`, `Accessories left: ${consent.accessories_left ? "Yes" : "No"}`, `Data backup requested: ${consent.backup_requested ? "Yes" : "No"}`, "", "The order is now Ready to start. We will contact you with further updates.", "", "Neno's IT repair"].join("\n") }); return true; } catch (error) { console.error(`Consent confirmation failed for ${ticket.public_id}:`, error.message); return false; } }
+async function sendConsentNotificationEmail(ticket, consent) { const transport = createTransport(); if (!transport || !adminEmail) return false; try { await transport.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: adminEmail, replyTo: ticket.email, subject: `Signed approval received — ${ticket.public_id}`, text: [`Customer approval received for ${ticket.public_id}.`, "", `Customer: ${ticket.name}`, `Email: ${ticket.email}`, `Signature: ${consent.signature_name}`, `Signed at: ${consent.signed_at}`, `Accessories left: ${consent.accessories_left ? "Yes" : "No"}`, `Data backup requested: ${consent.backup_requested ? "Yes" : "No"}`, "", `Review the order: ${publicBaseUrl}/admin`].join("\n") }); return true; } catch (error) { console.error(`Owner consent notification failed for ${ticket.public_id}:`, error.message); return false; } }
 async function sendNewTicketNotification(ticket) { if (!ticket || !adminEmail) return false; const transport = createTransport(); if (!transport) return false; try { await transport.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: adminEmail, replyTo: ticket.email, subject: `New repair request — ${ticket.public_id}`, text: ["A new Neno's IT repair work order was submitted.", "", `Work order: ${ticket.public_id}`, `Name: ${ticket.name}`, `Email: ${ticket.email}`, `Phone: ${ticket.phone}`, "", "Request:", ticket.assistance, "", `Review work orders: ${publicBaseUrl}/admin`].join("\n") }); return true; } catch (error) { console.error(`New ticket notification failed for ${ticket.public_id}:`, error.message); return false; } }
 async function sendPasswordResetEmail(rawToken, user) { const transport = createTransport(); if (!transport || !user?.email) return false; const resetUrl = `${publicBaseUrl}/admin/reset?token=${encodeURIComponent(rawToken)}`; try { await transport.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: user.email, replyTo: process.env.REPAIR_REPLY_TO || process.env.SMTP_FROM || process.env.SMTP_USER, subject: "Neno's IT repair — reset your admin password", text: ["A password reset was requested for your Neno's IT repair admin account.", "", `Reset your password here: ${resetUrl}`, "", "This link expires in 30 minutes and can only be used once.", "If you did not request this, you can ignore this email."].join("\n") }); return true; } catch (error) { console.error("Password reset email failed:", error.message); return false; } }
-function statusMessage(status) { if (status === "contact-needed") return "We have your request and will contact you to confirm the next step."; if (status === "in-progress") return "Your device or service request is being worked on now."; return "Your repair or service request is complete. We will follow up with pickup or delivery details."; }
+function statusMessage(status) { if (status === "contact-needed") return "We have your request and will contact you to confirm the next step."; if (status === "ready-to-start") return "We received your signed approval. The order is ready for the service team to begin."; if (status === "in-progress") return "Your device or service request is being worked on now."; return "Your repair or service request is complete. We will follow up with pickup or delivery details."; }
+function formatMoney(cents) { return Number.isInteger(Number(cents)) ? `$${(Number(cents) / 100).toFixed(2)}` : "Price to be confirmed"; }
 function createTransport() { if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASSWORD) return null; return nodemailer.createTransport({ host: process.env.SMTP_HOST, port: Number(process.env.SMTP_PORT || 587), secure: process.env.SMTP_SECURE === "true", auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD } }); }
