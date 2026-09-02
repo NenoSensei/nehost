@@ -6,3 +6,4 @@
 .hero h1{font-size:clamp(2.7rem,6vw,5.2rem)}
 .band .button.secondary{color:#fff;border-color:#aeb4c0}
 .staff-login .eyebrow{color:#9bb0ff}
+.staff-login .button.secondary{color:#f5f0e8;border-color:#aeb4c0}.staff-login .notice{background:#2a2024;color:#fff}
