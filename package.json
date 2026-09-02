@@ -12,8 +12,9 @@
     "check:server": "node --check server/index.mjs",
     "test:integration": "node tests/security-smoke.mjs",
     "test:workflow": "node tests/workflow-smoke.mjs",
+    "test:sessions": "node tests/session-restart.mjs",
     "test:accessibility": "node tests/accessibility.mjs",
-    "check": "npm run lint && npm run check:server && npm run build && npm run test:integration && npm run test:workflow && npm run test:accessibility"
+    "check": "npm run lint && npm run check:server && npm run build && npm run test:integration && npm run test:workflow && npm run test:sessions && npm run test:accessibility"
   },
   "dependencies": {
     "@simplewebauthn/browser": "^13.3.0",
@@ -39,5 +40,8 @@
     "globals": "^15.14.0",
     "playwright": "^1.62.1",
     "vite": "^6.0.5"
+  },
+  "overrides": {
+    "qs": "6.16.0"
   }
 }

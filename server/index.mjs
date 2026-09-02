@@ -674,7 +674,16 @@ app.get("*", (req, res) => {
 });
 const server = app.listen(port, "0.0.0.0", () => { console.log(`Neno’s IT Repair server listening on ${port}`); if (!getStoredAdminPasswordHash()) console.warn("No staff password is configured; staff login is disabled."); });
 const pruneTimer = setInterval(() => { const now = new Date().toISOString(); database.run("DELETE FROM auth_sessions WHERE idle_expires_at <= ? OR absolute_expires_at <= ?", [now, now]); database.run("DELETE FROM auth_challenges WHERE expires_at <= ? OR attempts >= 5", [now]); persistDatabase(); }, 15 * 60 * 1000); pruneTimer.unref();
-for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => { clearInterval(pruneTimer); persistDatabase(); server.close(() => process.exit(0)); });
+let shuttingDown = false;
+for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  clearInterval(pruneTimer);
+  persistDatabase();
+  const forcedExit = setTimeout(() => { persistDatabase(); process.exit(0); }, 8_000);
+  forcedExit.unref();
+  server.close(() => { clearTimeout(forcedExit); persistDatabase(); process.exit(0); });
+});
 
 function cleanText(value, maxLength) { return typeof value === "string" ? value.trim().replace(/[<>]/g, "").slice(0, maxLength) : ""; }
 function isEmail(value) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value); }
@@ -770,10 +779,20 @@ async function submitConsent(req, res) { const token = cleanText(req.body.token,
 function revokeConsent(consentId) { database.run("UPDATE work_order_consents SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL", [new Date().toISOString(), consentId]); }
 function persistDatabase() {
   const temporaryPath = `${databasePath}.tmp`;
-  fs.writeFileSync(temporaryPath, Buffer.from(database.export()), { mode: 0o600 });
+  const descriptor = fs.openSync(temporaryPath, "w", 0o600);
+  try {
+    fs.writeFileSync(descriptor, Buffer.from(database.export()));
+    fs.fsyncSync(descriptor);
+  } finally {
+    fs.closeSync(descriptor);
+  }
   fs.chmodSync(temporaryPath, 0o600);
   fs.renameSync(temporaryPath, databasePath);
   fs.chmodSync(databasePath, 0o600);
+  try {
+    const directoryDescriptor = fs.openSync(dataDir, "r");
+    try { fs.fsyncSync(directoryDescriptor); } finally { fs.closeSync(directoryDescriptor); }
+  } catch { /* Directory fsync is not supported on every development platform. */ }
 }
 function hashToken(token) { return crypto.createHash("sha256").update(token).digest("hex"); }
 function createDurableSession(res, type, principalId) {
