@@ -1,4 +1,4 @@
-name: Deploy GitHub Pages
+name: Security and build checks
 
 on:
   push:
@@ -8,15 +8,13 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages
+  group: repair-site-ci-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  build:
+  verify:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -31,21 +29,14 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Build
-        run: npm run build
+      - name: Install Chromium for accessibility checks
+        run: npx playwright install --with-deps chromium
 
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
+      - name: Full dependency audit
+        run: npm audit --audit-level=high
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Lint, syntax, build, integration, and accessibility
+        run: npm run check

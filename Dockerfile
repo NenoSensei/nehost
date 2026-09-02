@@ -16,6 +16,7 @@ RUN mkdir -p /app /data && chown -R node:node /app /data
 COPY --from=build --chown=node:node /app/package*.json /app/
 RUN npm ci --omit=dev
 COPY --from=build --chown=node:node /app/server /app/server
+COPY --from=build --chown=node:node /app/shared /app/shared
 COPY --from=build --chown=node:node /app/dist /app/dist
 USER node
 

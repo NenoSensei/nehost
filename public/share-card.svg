@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">Neno’s IT Repair</title><desc id="desc">Philadelphia computer service by appointment</desc>
+  <rect width="1200" height="630" fill="#f4f0e7"/><rect x="70" y="65" width="1060" height="500" rx="30" fill="#183cb8"/>
+  <circle cx="1010" cy="165" r="88" fill="#d95b12"/><path d="M970 165h80M1010 125v80" stroke="#fff" stroke-width="18" stroke-linecap="round"/>
+  <text x="125" y="250" fill="#fff" font-family="Georgia,serif" font-size="90" font-weight="700">Neno’s IT Repair</text>
+  <text x="130" y="340" fill="#e9edff" font-family="Arial,sans-serif" font-size="40" font-weight="700">Philadelphia computer service</text>
+  <text x="130" y="405" fill="#e9edff" font-family="Arial,sans-serif" font-size="34">By appointment · Email-first support</text>
+  <text x="130" y="495" fill="#fff" font-family="Arial,sans-serif" font-size="30">repair.nenosensei.com</text>
+</svg>
